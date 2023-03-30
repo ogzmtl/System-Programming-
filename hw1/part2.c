@@ -13,8 +13,6 @@ int main(){
 
     int fd, fd_dup, fd_dup2; 
     int wr_orgnl, wr_dup, wr_dup2; 
-    int close_orgnl, close_duplicated, close_duplicated2;
-    int fd_original, fd_duplicated,fd_duplicated2; 
     mode_t mode = S_IRUSR | S_IWUSR |
                   S_IRGRP | S_IWGRP ;
     int flags = O_CREAT | O_RDWR; 
@@ -28,14 +26,25 @@ int main(){
     fd_dup = dup(fd);
     char* original_buffer = "Hello from original file descriptor.\n";
     wr_orgnl = write(fd,original_buffer, strlen(original_buffer));
+    if(-1 == wr_orgnl){
+        perror("write");
+        return -1;
+    }
 
     char* duplicated_buffer = "Hello from dup file descriptor.\n";
     wr_dup = write(fd_dup,duplicated_buffer, strlen(duplicated_buffer));
-
+    if(-1 == wr_dup){
+        perror("write");
+        return -1;
+    }
 
     fd_dup2 = dup2(fd, fd_dup);
     char* dup2_buffer = "Hello from dup2 file descriptor.\n";
     wr_dup2 = write(fd_dup2,dup2_buffer, strlen(dup2_buffer));
+    if(-1 == wr_dup2){
+        perror("write");
+        return -1;
+    }
 
     if(-1 == close(fd)){
         perror("close");

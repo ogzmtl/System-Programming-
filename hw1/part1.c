@@ -31,6 +31,10 @@ int main(int argc, char* argv[]){
 		
 		for(size_t i = 0; i < digit ; i++){
 			wr = write(fd,"a", 1);
+			if (-1 == wr){
+				perror("write");
+				return -1;
+			}
 		}
 	}
 	else if(4 == argc && 'x' == argv[3][0]){
@@ -45,7 +49,16 @@ int main(int argc, char* argv[]){
 		digit = string_to_digit(argv[2], digit_len);
 		for(size_t i = 0; i < digit ; i++){
 			current = lseek(fd, 0, SEEK_END);
+			if (-1 == current){
+				perror("seek");
+				return -1;
+			}
 			wr = write(fd,"a", 1);
+			if (-1 == wr){
+				perror("write");
+				return -1;
+			}
+
 		}
 	}
 	else{

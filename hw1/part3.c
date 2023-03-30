@@ -28,7 +28,6 @@ int main(){
     int flags = O_CREAT | O_RDWR;
     int fd_original, fd_duplicated;
     int wr_orgnl, wr_dup;
-    int close_orgnl, close_duplicated;
 
     fd_original = open("part3.txt", flags, mode); 
 
@@ -45,9 +44,17 @@ int main(){
 
     char* original_buffer = "Hello from original file descriptor.\n";
     wr_orgnl = write(fd_original,original_buffer, strlen(original_buffer));
+    if(-1 == wr_orgnl){
+        perror("write");
+        return -1;
+    }
 
     char* duplicated_buffer = "Hello from duplicated file descriptor.\n";
     wr_dup = write(fd_duplicated,duplicated_buffer, strlen(duplicated_buffer));
+    if(-1 == wr_dup){
+        perror("write");
+        return -1;
+    }
 
     long int offset_fd = lseek(fd_original, 0, SEEK_CUR);
     long int offset_fd_duplicated = lseek(fd_duplicated, 0, SEEK_CUR);
