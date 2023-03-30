@@ -3,6 +3,7 @@
 #include <stdio.h> 
 #include <stdlib.h>
 #include <unistd.h>
+
 size_t string_length(char* string_number);
 size_t string_to_digit(char* number_of_bytes, size_t len); 
 size_t power_of(int base, int power);
@@ -22,8 +23,8 @@ int main(int argc, char* argv[]){
 		fd = open(argv[1], flags, mode);		
 		
 		if(fd == -1){
-			printf("Unable to open a file.\n");
-			exit(-1);
+			perror("open");
+			return -1;
 		}
 		digit_len = string_length(argv[2]);
 		digit = string_to_digit(argv[2], digit_len);
@@ -37,8 +38,8 @@ int main(int argc, char* argv[]){
 		fd = open(argv[1], flags, mode);		
 		
 		if(fd == -1){
-			printf("Unable to open a file.\n");
-			exit(-1);
+			perror("open");
+			return -1;
 		}
 		digit_len = string_length(argv[2]);
 		digit = string_to_digit(argv[2], digit_len);
@@ -48,14 +49,13 @@ int main(int argc, char* argv[]){
 		}
 	}
 	else{
-		printf("Invalid argument.\n");
-		exit(-1);
+		printf("Invalid.\n");
+		return -1;
 	}
 	
 	if (-1 == close(fd))
-		exit(-1);
+		perror("close");
 
-	
 return 0;
 }
 
@@ -89,22 +89,3 @@ size_t power_of(int base, int power){
 		return 1; 
 	return base*power_of(base, power-1);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
