@@ -11,6 +11,8 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <errno.h>
 
 struct client_info
 {
@@ -28,19 +30,25 @@ struct server_inside
 {
     char filename[512];
     char modification_time[256];
-    unsigned int file_modes; 
+    unsigned int file_modes;
 };
 
 int size_of_server_insides;
-// int file_counter = 0; 
+int size_of_client_insides;
+// int file_counter = 0;
 pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_produce = PTHREAD_COND_INITIALIZER;
 pthread_cond_t cond_consume = PTHREAD_COND_INITIALIZER;
 
 struct server_inside *server_files_information;
+struct server_inside *client_files_information;
+struct server_inside *difference;
+struct socket_server srv;
 void *synchronize_server_side(void *arg);
 int take_files(char *path, int file_counter);
 void reallocate_struct(int i);
+void compare();
+void create_directory(const char* temp1);
 
 int main(int argc, char **argv)
 {
@@ -60,7 +68,7 @@ int main(int argc, char **argv)
     int thread_pool_size = atoi(argv[2]);
     int PORT_NUM = atoi(argv[3]);
     pthread_t threads[thread_pool_size];
-    struct socket_server srv;
+    
     srv.server_src = argv[1];
 
     server_files_information = (struct server_inside *)malloc(sizeof(struct server_inside) * 5);
@@ -147,30 +155,51 @@ void *synchronize_server_side(void *arg)
     struct socket_server *communication = (struct socket_server *)arg;
     char buffer[512];
     int file_counter = take_files(communication->server_src, 0);
-    printf("Total files counted on the server : %d\n", file_counter);
-    for (int j = 0; j < file_counter; j++)
-    {
-        printf("files - mod_time :%s - %s", server_files_information[j].filename, server_files_information[j].modification_time);
-        printf(" - modes :%d \n", server_files_information[j].file_modes);
-    }
-    printf("total files : %d\n", size_of_server_insides);
-    
+    // printf("Total files counted on the server : %d\n", file_counter);
+    // for (int j = 0; j < file_counter; j++)
+    // {
+    //     printf("files - mod_time :%s - %s", server_files_information[j].filename, server_files_information[j].modification_time);
+    //     printf(" - modes :%d \n", server_files_information[j].file_modes);
+    // }
+    // printf("total files : %d\n", size_of_server_insides);
+
     while (1)
     {
+        int sizeof_client;
         memset(buffer, 0, sizeof(buffer));
         write(communication->fd, &size_of_server_insides, sizeof(int));
         // send(communication->server_src, communication, sizeof(communication), 0);
-        
-        // for (int j = 0; j < size_of_server_insides; j++)
-        // {
-        //     send(communication->fd, &server_files_information[j], sizeof(server_files_information[j]),0);
+
+        for (int j = 0; j < size_of_server_insides; j++)
+        {
+            send(communication->fd, &server_files_information[j], sizeof(server_files_information[j]), 0);
+        }
+
+        read(communication->fd, &sizeof_client, sizeof(sizeof_client));
+        // mutex
+        size_of_client_insides = sizeof_client;
+        printf("client_insides : %d\n", sizeof_client);
+        client_files_information = (struct server_inside *)malloc(sizeof(struct server_inside) * sizeof_client);
+        for (int j = 0; j < sizeof_client; j++)
+        {
+            recv(communication->fd, &client_files_information[j], sizeof(client_files_information[j]), 0);
+        }
+        compare();
+        // for(int j = 0; j < sizeof_client; j++){
+        //     printf("files - mod_time :%s - %s", client_files_information[j].filename, client_files_information[j].modification_time);
+        //     printf(" - modes :%d \n", client_files_information[j].file_modes);
         // }
-        read(communication->fd, buffer, sizeof(buffer));
-        write(STDOUT_FILENO, buffer, sizeof(buffer));
-        memset(buffer, 0, sizeof(buffer));
-        // snprintf(buffer, sizeof(buffer),"%d", i++);
-        // write(STDOUT_FILENO, buffer, strlen(buffer));
-        // take_files(communication->server_src);
+
+        // compare files and modification times
+        // compare();
+
+        // mutex_unlock
+        //  read(communication->fd, buffer, sizeof(buffer));
+        //  write(STDOUT_FILENO, buffer, sizeof(buffer));
+        //  memset(buffer, 0, sizeof(buffer));
+        //  snprintf(buffer, sizeof(buffer),"%d", i++);
+        //  write(STDOUT_FILENO, buffer, strlen(buffer));
+        //  take_files(communication->server_src);
     }
 }
 
@@ -189,7 +218,7 @@ int take_files(char *path, int file_counter)
     struct dirent *entry;
     strcat(path, "/");
     directory = opendir(path);
-    //mutex koyulabilir 
+    // mutex koyulabilir
     if (directory)
     {
         while ((entry = readdir(directory)) != NULL)
@@ -235,7 +264,6 @@ int take_files(char *path, int file_counter)
 
         closedir(directory);
         // printf("i : %d - fileCounter : %d\n", i, file_counter);
-        
     }
 
     size_of_server_insides = i;
@@ -248,7 +276,7 @@ void reallocate_struct(int i)
 
     char **temp_filenames = (char **)malloc(sizeof(char *) * (i));
     char **temp_modification = (char **)malloc(sizeof(char *) * (i));
-    unsigned int *modes = (unsigned int *)malloc(sizeof(unsigned int)*i);
+    unsigned int *modes = (unsigned int *)malloc(sizeof(unsigned int) * i);
 
     for (int j = 0; j < i; j++)
     {
@@ -257,7 +285,6 @@ void reallocate_struct(int i)
         strcpy(temp_filenames[j], server_files_information[j].filename);
         strcpy(temp_modification[j], server_files_information[j].modification_time);
         modes[j] = server_files_information[j].file_modes;
-        
     }
     server_files_information = (struct server_inside *)malloc(sizeof(struct server_inside) * (i + 5));
 
@@ -284,3 +311,88 @@ void reallocate_struct(int i)
     free(temp_modification);
     free(temp_filenames);
 }
+
+void compare()
+{
+    // printf("NABER\n");
+    char created_filename[256]; 
+    for (int i = 0; i < size_of_client_insides; i++)
+    {
+        memset(created_filename, 0, sizeof(created_filename));
+        char *delimeter_client = strchr(client_files_information[i].filename, '/');
+        int flag = 0;
+        if (delimeter_client != NULL)
+        {
+            delimeter_client = delimeter_client + 1;
+            // printf("Remaining: %s\n", delimeter_srv);
+        }
+        for (int j = 0; j < size_of_server_insides; j++)
+        {
+            char *delimeter_srv = strchr(server_files_information[j].filename, '/');
+            if (delimeter_srv != NULL)
+            {
+                delimeter_srv = delimeter_srv + 1;
+                // printf("Remaining: %s\n", delimeter_client);
+            }
+            if (strcmp(delimeter_srv, delimeter_client) == 0
+                // && strcmp(server_files_information[j].file_modes, client_files_information[i].file_modes) == 0
+            )
+            {
+                printf("Remaining: %s\n", delimeter_srv);
+                flag = 1;
+                break;
+            }
+        }
+
+        if (flag == 0)
+        {
+            char temp[256];
+            memset(temp, 0, sizeof(temp));
+            strcat(temp, srv.server_src);
+            // strcat(temp, "/");
+            strcat(temp,delimeter_client);
+            // printf("Added: %s\n", temp);
+            
+            //parse and create folder then send temp to open syscall
+            create_directory(temp);
+            int fd = open(temp, O_CREAT | O_RDWR | O_TRUNC,client_files_information[i].file_modes);
+            if(fd == -1){
+                perror("Open");
+                continue;
+            }
+            close(fd);
+        }
+    }
+}
+
+void create_directory(const char* path) {
+    const char delimiter[] = "/";
+    char temp[256];
+    strcpy(temp, path);
+
+    char* token = strtok(temp, delimiter);
+    char* lastToken = NULL;
+    char temp_old[256] = "";  // Separate variable to hold modified string
+
+    printf("Creating directories\n");
+
+    while (token != NULL) {
+        lastToken = token;
+        token = strtok(NULL, delimiter);
+
+        if (token != NULL) {
+            strcat(temp_old, lastToken);
+            strcat(temp_old, delimiter);
+
+            if (mkdir(temp_old, 0777) != 0) {
+                if (errno != EEXIST) {
+                    perror("mkdir");
+                    return;
+                }
+            }
+            // printf("temp_old: %s\n", temp_old);
+        }
+    }
+}
+
+            
