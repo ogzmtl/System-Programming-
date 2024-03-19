@@ -50,6 +50,32 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+    // char hostname[256];
+    // char ip_address[256];
+
+    // if (gethostname(hostname, sizeof(hostname)) == -1) {
+    //     perror("Error getting hostname");
+    //     return 1;
+    // }
+
+    // struct addrinfo hints, *res;
+    // int status;
+
+    // memset(&hints, 0, sizeof(hints));
+    // hints.ai_family = AF_INET;  // Use IPv4
+
+    // if ((status = getaddrinfo(hostname, NULL, &hints, &res)) != 0) {
+    //     fprintf(stderr, "Error getting address info: %s\n", gai_strerror(status));
+    //     return 1;
+    // }
+
+    // if (inet_ntop(AF_INET, &((struct sockaddr_in *)res->ai_addr)->sin_addr, ip_address, sizeof(ip_address)) == NULL) {
+    //     perror("Error converting IP address to string");
+    //     return 1;
+    // }
+
+    // printf("IP address: %s\n", ip_address);
+
     int socketfd, new_client_fd;
     char buffer[512];
     struct sockaddr_in addr;
@@ -110,16 +136,15 @@ int main(int argc, char **argv)
         {
             recv(socketfd, &server_files[j], sizeof(server_files[j]), 0);
         }
-        // printf("B\n");
+
 
         write(socketfd, &size_of_client_inside, sizeof(int));
-        printf("C\n");
         for (int i = 0; i < size_of_client_inside; i++)
         {
             send(socketfd, &client_files[i], sizeof(client_files[i]), 0);
         }
-        // printf("D\n");
-        // write_to_server();
+
+
         size_of_client_inside = cli_files;
         // if( counter != 0)
         // {
@@ -138,11 +163,10 @@ int main(int argc, char **argv)
         // else if(counter == 0)
         // {
             compare(argv[1]);
-            read_from_serverx(socketfd, counter++, clien.client_src);
+            read_from_serverx(socketfd, counter, clien.client_src);
         // }
         
-        // printf("E\n");
-        // write_to_server(socketfd, counter, clien.client_src);
+        // write_to_server(socketfd, counter++);
 
 
         // sleep(4);
@@ -447,7 +471,7 @@ void read_from_serverx(int fd, int flag, const char* src) {
             
             long int size; 
             read(fd,&size , sizeof(long int));
-            printf("SIZE = %ld\n", size);
+            // printf("SIZE = %ld\n", size);
 
             for(int j = 0; j < size; j++)
             {

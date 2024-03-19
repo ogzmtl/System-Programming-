@@ -53,7 +53,7 @@ int take_files(char *path, int file_counter, int flag);
 void reallocate_struct(int i);
 void compare();
 void create_directory(const char *temp1);
-void senkronize_et(int i);
+void read_from_clientx(int fd, const char* src) ;
 
 int main(int argc, char **argv)
 {
@@ -111,7 +111,6 @@ int main(int argc, char **argv)
     snprintf(buffer, sizeof(buffer), "Server is listening on port %d...\n", PORT_NUM);
     write(STDOUT_FILENO, buffer, sizeof(buffer));
 
-    socklen_t addrlen = sizeof(addr);
     int i = 0;
     while (1)
     {
@@ -148,15 +147,8 @@ int main(int argc, char **argv)
 void *synchronize_server_side(void *arg)
 {
     struct socket_server *communication = (struct socket_server *)arg;
-    char buffer[512];
     int file_counter;
     int counter = 0;
-    // printf("Total files counted on the server : %d\n", file_counter);
-    // for (int j = 0; j < file_counter; j++)
-    // {
-    //     printf("files - mod_time :%s - %s", server_files_information[j].filename, server_files_information[j].modification_time);
-    //     printf(" - modes :%d \n", server_files_information[j].file_modes);
-    // }
 
     while (1)
     {
@@ -166,7 +158,7 @@ void *synchronize_server_side(void *arg)
         write(communication->fd, &size_of_server_insides, sizeof(int));
 
         // printf("A\n");
-        printf("Size of server : %d\n", size_of_server_insides);
+        // printf("Size of server : %d\n", size_of_server_insides);
         for (int j = 0; j < size_of_server_insides; j++)
         {
             send(communication->fd, &server_files_information[j], sizeof(server_files_information[j]), 0);
@@ -245,7 +237,11 @@ void *synchronize_server_side(void *arg)
         // {
             compare();
             write_to_client(communication->fd, counter++);
+            // read_from_clientx(communication->fd, srv.server_src);
         // }
+        free(server_files_information);
+        free(client_files_information);
+        server_files_information = (struct server_inside *)malloc(sizeof(struct server_inside) * 5);
 
         // compare files and modification times
         // compare();
@@ -388,13 +384,10 @@ void compare()
             if (delimeter_srv != NULL)
             {
                 delimeter_srv = delimeter_srv + 1;
-                // printf("Remaining: %s\n", delimeter_client);
             }
             if (strcmp(delimeter_srv, delimeter_client) == 0
-                // && strcmp(server_files_information[j].file_modes, client_files_information[i].file_modes) == 0
             )
             {
-                // printf("Remaining: %s\n", delimeter_srv);
                 flag = 1;
                 break;
             }
@@ -511,15 +504,55 @@ void write_to_client(int fd, int flag)
         }
     }
 }
+void read_from_clientx(int fd, const char* src) {
+    int bytesRead;
+    int BUFFER_SIZE = 1;
+    char buffer[BUFFER_SIZE];
+        for (int i = 0; i < size_of_client_insides; i++) {
+            char delimiter_server[256];
+            recv(fd, delimiter_server, 256, 0);
+            char temp[256];
+            memset(temp, 0, sizeof(temp));
+            strcpy(temp, src);
+            strcat(temp, delimiter_server);
+            // printf("%s\n", temp);
+            int file_fd = open(temp, O_WRONLY | O_TRUNC);
+            if (file_fd == -1) {
+                perror("Failed to open file");
+                exit(EXIT_FAILURE);
+            }
+            
+            long int size; 
+            read(fd,&size , sizeof(long int));
+            // printf("SIZE = %ld\n", size);
+
+            for(int j = 0; j < size; j++)
+            {
+                recv(fd, buffer, 1, 0);
+                // printf("Readed: %s\n", buffer);
+                if (bytesRead == -1) {
+                    perror("Receive failed");
+                    exit(EXIT_FAILURE);
+                }
+                if (write(file_fd, buffer, 1) == -1) {
+                    perror("Write to file failed");
+                    exit(EXIT_FAILURE);
+                }
+            }          
+            close(file_fd);
+        }
+
+}
 
 void read_from_client(int fd, const char *src)
 {
-    int bytesRead;
     int BUFFER_SIZE = 1;
     char buffer[BUFFER_SIZE];
     char filen[256];
     int bytes;
     int bytesCounter = 0;
+    struct stat st;
+
     recv(fd, filen, sizeof(filen), 0);
     char temp[256];
 
@@ -532,7 +565,6 @@ void read_from_client(int fd, const char *src)
         exit(EXIT_FAILURE);
     }
     read(fd, &bytes, sizeof(bytes));
-    struct stat st;
     for (int j = 0; j < st.st_size; j++)
     {
         int bytesRead = recv(file_fd, buffer, 1, 0);
@@ -543,6 +575,7 @@ void read_from_client(int fd, const char *src)
             perror("Read failed");
             exit(EXIT_FAILURE);
         }
+
         if (write(fd, buffer, 1) == -1)
         {
             perror("Send failed");

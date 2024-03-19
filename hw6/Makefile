@@ -42,6 +42,8 @@ $(BUILD_CLIENT)/%.o: $(CLIENT_SOURCE)/%.c
 # 	g++ $(CXXFLAGS) -c -o $@ $< -I$(INCDIR)
 
 # Clean the build directory
-# clean:
-# 	rm -f $(BUILD_SERVER)/*.o $(SERVER)
-# 	rm $(SERVER)
+clean:
+	rm $(BUILD_SERVER)/*.o 
+	rm $(BUILD_CLIENT)/*.o 
+	rm $(SERVER)
+	rm $(CLIENT)
