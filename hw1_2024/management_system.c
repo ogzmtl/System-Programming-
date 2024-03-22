@@ -17,11 +17,16 @@ typedef enum terminalCommand
     GTUSTUDENTGRADE_CREATE,
     ADDSTUDENT, 
     SEARCHSTUDENT,
-    SORTALL,
+    SORTALL_0,
+    SORTALL_1,
     SHOWALL, 
     LISTGRADES, 
     LISTSOME,
 }terminalCommand;
+typedef struct for_sort{
+    char name_surname[65];
+    char grade[3];
+}for_sort;
 
 void write_to_log(const char * log)
 {
@@ -46,6 +51,30 @@ void write_to_log(const char * log)
     {
         perror("close log file error");
     }
+}
+
+int compareNamesA(const void *a, const void *b) {
+  const for_sort *entry1 = (const for_sort *)a;
+  const struct for_sort *entry2 = (const for_sort *)b;
+  return strcmp(entry1->name_surname, entry2->name_surname); // Ascending order
+}
+
+int compareGradesA(const void *a, const void *b) {
+  const for_sort *entry1 = (const for_sort *)a;
+  const for_sort *entry2 = (const for_sort *)b;
+  return strcmp(entry1->grade, entry2->grade); // Ascending order
+}
+
+int compareNamesD(const void *a, const void *b) {
+  const for_sort *entry1 = (const for_sort *)a;
+  const struct for_sort *entry2 = (const for_sort *)b;
+  return strcmp(entry2->name_surname, entry1->name_surname); // Ascending order
+}
+
+int compareGradesD(const void *a, const void *b) {
+  const for_sort *entry1 = (const for_sort *)a;
+  const for_sort *entry2 = (const for_sort *)b;
+  return strcmp(entry2->grade, entry1->grade); // Ascending order
 }
 
 void display(char** command, int counter, int display_flag)
@@ -191,9 +220,128 @@ void display_some(char** command, int counter)
     memset(stringBufferForLog, 0, sizeofString);
 }
 
-void sortAll(char**command , int counter)
+void sortAll_f(char**command , int counter,int fd, char flag)
 {
-    return;
+    for_sort* students = malloc(sizeof(for_sort)*10);
+    for(int i=0; i < 10; i++){
+        memset(students[i].name_surname, 0, sizeof(students[i].name_surname));
+        memset(students[i].grade, 0, sizeof(students[i].grade));
+    }
+    int count = 0;
+    int size = 10;
+    int file_read =0;
+    int read_bytes = 0;
+    int ns_index = 0;
+    int gr_index = 0;
+    char c;
+    char row[64];
+    char not[3];
+    memset(row,0, sizeof(row));
+    memset(not,0, sizeof(not));
+    while (file_read == 0) 
+    {
+        read_bytes = read(fd, &c, 1);
+        if (read_bytes == -1) 
+           perror("read while: -1");
+        if (read_bytes == 0) 
+            file_read = 1;
+        if(c != ','){
+            row[ns_index++]=c;
+            // char strinBufferForLog[256];
+            // int sizofString = sprintf(strinBufferForLog, "Total row Number: %s\n", row);
+            // write_to_log(strinBufferForLog);
+            // memset(strinBufferForLog, 0, sizofString);
+        } 
+        else
+        {
+            // char strinBufferForLog[256];
+            // int sizofString = sprintf(strinBufferForLog, "Total row1 Number: %s\n", row);
+            // write_to_log(strinBufferForLog);
+            // memset(strinBufferForLog, 0, sizofString);
+            strcpy(students[count].name_surname, row);
+            while(c != '\n')
+            {
+                read_bytes = read(fd, &c, 1);
+                if (read_bytes == -1) 
+                    perror("read while: -1");
+
+                not[gr_index++]=c;
+            }
+
+            row[ns_index] = '\0';
+            not[gr_index] = '\0';
+
+            // strcpy(students[count].name_surname, row);
+            strcpy(students[count].grade, not);
+            count++;
+            if(count == size)
+            {
+                size *= 2;
+                students = realloc(students, sizeof(for_sort)*size);
+            }
+            memset(row,0, sizeof(row));
+            memset(not,0, sizeof(not));
+            ns_index = 0;
+            gr_index = 0;  
+        }
+
+    }
+    char stringBufferForLog[256];
+    int sizeofString = sprintf(stringBufferForLog, "Total Student Number: %d\n", count);
+    write_to_log(stringBufferForLog);
+    memset(stringBufferForLog, 0, sizeofString);
+
+    switch(flag){
+        case 'n':
+        //compare names with ascending order
+            sizeofString = sprintf(stringBufferForLog, "Sorting names with ascending order\n");
+            write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+            memset(stringBufferForLog, 0, sizeofString);
+            qsort(students, count, sizeof(for_sort), compareNamesA);
+        break;
+
+        case 'g':
+        //compare grades with ascending order
+            sizeofString = sprintf(stringBufferForLog, "Sorting grades with ascending order\n");
+            write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+            write_to_log(stringBufferForLog);
+            memset(stringBufferForLog, 0, sizeofString);
+            qsort(students, count, sizeof(for_sort), compareGradesA);
+        break;
+
+        case 'd':
+        //compare names with descending order
+            sizeofString = sprintf(stringBufferForLog, "Sorting names with descenging order\n");
+            write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+            write_to_log(stringBufferForLog);
+            memset(stringBufferForLog, 0, sizeofString);
+            qsort(students, count, sizeof(for_sort), compareNamesD);
+        break; 
+
+        case 'c':
+        //compare grades with descending order
+            sizeofString = sprintf(stringBufferForLog, "Sorting grades with descenging order\n");
+            write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+            write_to_log(stringBufferForLog);
+            memset(stringBufferForLog, 0, sizeofString);
+            qsort(students, count, sizeof(for_sort), compareGradesD);
+        break;
+
+        default:
+            sizeofString = sprintf(stringBufferForLog, "Sorting names with ascending order\n");
+            write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+            write_to_log(stringBufferForLog);
+            memset(stringBufferForLog, 0, sizeofString);
+            qsort(students, count, sizeof(for_sort), compareNamesA);
+        break;
+    }
+    for(int i =0; i < count; i++){
+        sizeofString = sprintf(stringBufferForLog, "%s-%s\n", students[i].name_surname, students[i].grade);
+        write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+        memset(stringBufferForLog, 0, sizeofString);
+    }
+
+    
 }
 
 char* searchStudent(const char* name, int fd, char* row )
@@ -348,32 +496,52 @@ void addingStudent(char** command, int counter)
 
 void help_command()
 {
-    char stringBufferForWrite[100];
-    int sizeofString = sprintf(stringBufferForWrite, "gtuStudentsGrade \"filename.txt\"\n");
+    char stringBufferForWrite[150];
+    int sizeofString = sprintf(stringBufferForWrite, "------------\ngtuStudentsGrade \"[filename.txt]\"-> create file if not exist, otherwise truncate\n------------\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
     
-    sizeofString = sprintf(stringBufferForWrite, "addStudentsGrade \"Name Surname\" \"GRADE\"\"filename.txt\"\n");
+    sizeofString = sprintf(stringBufferForWrite, "------------\naddStudentsGrade \"[Name Surname]\" \"[grade]\"\"[filename.txt]\"->adding student end of file\n------------\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
     
-    sizeofString = sprintf(stringBufferForWrite, "searchStudent \"Name Surname\" \"filename.txt\"\n");
+    sizeofString = sprintf(stringBufferForWrite, "------------\nsearchStudent \"[Name Surname]\" \"[filename.txt]\"-> searching student\n------------\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
     
-    sizeofString = sprintf(stringBufferForWrite, "sortAll \"filename.txt\"\n");
+    sizeofString = sprintf(stringBufferForWrite, "------------\nsortAll \"[filename.txt]\"-> (default)sort names with ascending default\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
 
-    sizeofString = sprintf(stringBufferForWrite, "showAll \"filename.txt\"\n");
+    sizeofString = sprintf(stringBufferForWrite, "sortAll \"[n-g-d-c]\" \"[filename.txt]\"-> has different options explained below\n");
+    write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
+    memset(stringBufferForWrite, 0, sizeofString);
+    sizeofString = sprintf(stringBufferForWrite, "sortAll \"[n]\" \"[filename.txt] -> sort names with ascending\"\n");
+    write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
+    memset(stringBufferForWrite, 0, sizeofString);
+    
+    sizeofString = sprintf(stringBufferForWrite, "sortAll \"[g]\" \"[filename.txt] -> sort grades with ascending\"\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
 
-    sizeofString = sprintf(stringBufferForWrite, "listGrades \"filename.txt\"\n");
+    sizeofString = sprintf(stringBufferForWrite, "sortAll \"[n]\" \"[filename.txt] -> sort names with descending\"\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
 
-    sizeofString = sprintf(stringBufferForWrite, "listSome \"count\" \"page_num\" \"filename.txt\"\n");
+    sizeofString = sprintf(stringBufferForWrite, "sortAll \"[n]\" \"[filename.txt] -> sort grades with descending\"\n------------\n");
+    write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
+    memset(stringBufferForWrite, 0, sizeofString);
+
+
+    sizeofString = sprintf(stringBufferForWrite, "------------\nshowAll \"[filename.txt]\"->shows all student in the file\n------------\n");
+    write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
+    memset(stringBufferForWrite, 0, sizeofString);
+
+    sizeofString = sprintf(stringBufferForWrite, "------------\nlistGrades \"[filename.txt]\"-> shows first 5 entries in the file\n------------\n");
+    write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
+    memset(stringBufferForWrite, 0, sizeofString);
+
+    sizeofString = sprintf(stringBufferForWrite, "------------\nlistSome \"[count]\" \"[page_num]\" \"[filename.txt]\"-> shows student in the specified page \n------------\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
 }
@@ -469,7 +637,9 @@ terminalCommand validateCommand(const char* buffer, int bufferLen, char** comman
     else if(strncmp(command[0], sortAll, strlen(sortAll)) == 0)
     {
         if(counter == 2)
-            return SORTALL;
+            return SORTALL_0;
+        else if (counter == 3)
+            return SORTALL_1;
         //may you add ascending - descending or name- grade order
         // write(STDOUT_FILENO, "4", 1);
         return COMMAND_ERR;
@@ -702,9 +872,74 @@ int main(){
                 }
             break; 
 
-            case SORTALL:
+            case SORTALL_0:
+                childpid = fork();
+                if(childpid == -1 )
+                {
+                    sizeofString = sprintf(stringBufferForWrite, "Fork error when displaying all %s\n", command[0]);
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
+                    perror("fork");
+                }
+                else if(childpid == 0)
+                {
+                    //maybe return error code or success code
+                    int flag = 0;
+                    int sort_fd = open(command[counter-1], O_CREAT | O_RDWR | O_NONBLOCK | O_APPEND, mode );
+                    if(sort_fd == -1)
+                    {
+                        sizeofString = sprintf(stringBufferForWrite, "File Open failed in child...exiting\n");
+                        write_to_log(stringBufferForWrite);
+                        memset(stringBufferForWrite, 0, sizeofString);
+                        perror("open");
+                    }
+                    sortAll_f(command, counter, sort_fd, command[1][0]);
+                    if(close(sort_fd)== -1){
+                        sizeofString = sprintf(stringBufferForWrite, "%s File Close syscall failed in child...exiting\n", command[1]);
+                        write_to_log(stringBufferForWrite);
+                        memset(stringBufferForWrite, 0, sizeofString);
+                        perror("close");
+                    }
+                    int sizeofString = sprintf(stringBufferForWrite, "Searching text file is Successfull\n");
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
+                    exit(EXIT_SUCCESS);
+                }
             break; 
-
+            case SORTALL_1:
+                childpid = fork();
+                if(childpid == -1 )
+                {
+                    sizeofString = sprintf(stringBufferForWrite, "Fork error when displaying all %s\n", command[0]);
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
+                    perror("fork");
+                }
+                else if(childpid == 0)
+                {
+                    //maybe return error code or success code
+                    int flag = 0;
+                    int sort_fd = open(command[counter-1], O_CREAT | O_RDWR | O_NONBLOCK | O_APPEND, mode );
+                    if(sort_fd == -1)
+                    {
+                        sizeofString = sprintf(stringBufferForWrite, "File Open failed in child...exiting\n");
+                        write_to_log(stringBufferForWrite);
+                        memset(stringBufferForWrite, 0, sizeofString);
+                        perror("open");
+                    }
+                    sortAll_f(command, counter, sort_fd, command[1][0]);
+                    if(close(sort_fd)== -1){
+                        sizeofString = sprintf(stringBufferForWrite, "%s File Close syscall failed in child...exiting\n", command[1]);
+                        write_to_log(stringBufferForWrite);
+                        memset(stringBufferForWrite, 0, sizeofString);
+                        perror("close");
+                    }
+                    int sizeofString = sprintf(stringBufferForWrite, "Searching text file is Successfull\n");
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
+                    exit(EXIT_SUCCESS);
+                }
+            break; 
             case SHOWALL:
                 childpid = fork();
                 if(childpid == -1 )
