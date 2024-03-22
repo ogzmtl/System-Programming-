@@ -10,7 +10,7 @@
 
 #define COMMAND_ERR -1
 
-//enum olusturulacak r, w, o, r-w 
+//enum olusturulacak
 typedef enum terminalCommand
 {
     GTUSTUDENTGRADE,
@@ -48,74 +48,9 @@ void write_to_log(const char * log)
     }
 }
 
-char* searchStudent(const char* name, int fd )
-{
-    int index = 0;
-    char c;
-    int read_bytes; 
-    int file_read=0;
-    char row[256];
-    char stringBufferForLog[512]; 
-    int sizeofString = sprintf(stringBufferForLog, "HELLO \n");
-    write(STDOUT_FILENO, stringBufferForLog, sizeofString);
-    memset(row, 0, sizeof(row));
-    memset(stringBufferForLog, 0, sizeof(sizeofString));
-    while (file_read == 0) {
-        
-        read_bytes = read(fd, &c, 1);
-        sizeofString = sprintf(stringBufferForLog, "char: %c\n", c);
-        write(STDOUT_FILENO, stringBufferForLog, sizeofString);
-        if (read_bytes == -1) 
-           perror("read while: -1");
-        if (read_bytes == 0) 
-            file_read = 1;
-        
-        if(c != ',')
-        {
-            row[index++]=c;
-        }
-        else{
-            if(strncmp(row, name, strlen(row)) == 0)
-            {
-                while(file_read == 0)
-                {
-                    read_bytes = read(fd, &c, 1);
-                    if (read_bytes == -1) 
-                        perror("read while: -1");
-                    if (read_bytes == 0) 
-                        file_read = 1;
-                    if(c != '\n')
-                        row[index++]=c;
-                    else{
-                        row[index] = '\0';
-                        return row;
-                    }
-                }
-            }
-            
-            else{
-                while(file_read == 0)
-                {
-                    read_bytes = read(fd, &c, 1);
-                    if (read_bytes == -1) 
-                        perror("read while: -1");
-                    if (read_bytes == 0) 
-                        file_read = 1;
-                    if(c != '\n')
-                        break;
-                }
-                memset(row, 0, strlen(row));
-                index = 0;
-            }
-        }
-    }
-    return NULL;
-}
-
 void display(char** command, int counter, int display_flag)
 {
-    char* name; 
-    char* grade;
+
     int buffer_len = 1024;
     char buffer[buffer_len];
     char stringBufferForLog[buffer_len];
@@ -126,6 +61,7 @@ void display(char** command, int counter, int display_flag)
     int index = 0;
     memset(buffer, 0, buffer_len);
     memset(stringBufferForLog, 0, buffer_len);
+    memset(student, 0, 256);
 
     int sizeofString = sprintf(stringBufferForLog, "\nShowing student\n----------\n");
     write_to_log(stringBufferForLog);
@@ -178,15 +114,160 @@ void display(char** command, int counter, int display_flag)
     memset(stringBufferForLog, 0, sizeofString);
 }
 
-void addingStudent(char** command, int counter)
+void display_some(char** command, int counter)
 {
-    char* name; 
-    char* grade;
     int buffer_len = 1024;
     char buffer[buffer_len];
     char stringBufferForLog[buffer_len];
+    int bytes_read = 0;
+    int file_read = 0;
+    char c;
+    char student[256];
+    int index = 0;
+    int temp_index = 0;
     memset(buffer, 0, buffer_len);
     memset(stringBufferForLog, 0, buffer_len);
+    memset(student, 0, 256);
+    int listSome_1 = command[1][0] - '0';
+    int listSome_2 = command[2][0] - '0';
+
+    int sizeofString = sprintf(stringBufferForLog, "%d - %d \n", listSome_1, listSome_2);
+    write_to_log(stringBufferForLog);
+    write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+    memset(stringBufferForLog, 0, sizeofString);
+
+    int search_fd = open(command[counter-1], O_CREAT | O_RDWR | O_NONBLOCK | O_APPEND,S_IRWXU | S_IRWXG | S_IRWXO);
+    if(search_fd == -1)
+    {
+        int sizeofString = sprintf(stringBufferForLog, "File Open failed in child...exiting\n");
+        write_to_log(stringBufferForLog);
+        memset(stringBufferForLog, 0, sizeofString);
+        perror("open");
+    }
+    if(listSome_1 < 0 || listSome_2 < 0){
+        int sizeofString = sprintf(stringBufferForLog, "page number is not lower than 0\n");
+        write_to_log(stringBufferForLog);
+        memset(stringBufferForLog, 0, sizeofString);
+    }
+    temp_index = listSome_1*(listSome_2-1);
+    while(file_read == 0 && listSome_1 > 0)
+    {
+        bytes_read = read(search_fd, &c, 1);
+        if(bytes_read == -1){
+            file_read = 1;
+            perror("read");
+        }
+        else if(bytes_read == 0){
+            file_read = 1;
+        }
+        if(c != '\n')
+        {
+            student[index++] = c;
+            counter++;
+        }
+        else{
+            student[index++] = '\n';
+            student[index] = '\0';
+            if(temp_index != 0){
+                temp_index--;
+            }
+            else{
+                write(STDOUT_FILENO, student, sizeof(student));
+                listSome_1--;
+            }
+            memset(student, 0, sizeof(student));
+            index = 0;
+        }
+        
+    }
+    if(close(search_fd)== -1){
+        sizeofString = sprintf(stringBufferForLog, "Close syscall error when searching from to file\n");
+        write_to_log(stringBufferForLog);
+        memset(stringBufferForLog, 0, sizeofString);
+        perror("close");
+    }
+    sizeofString = sprintf(stringBufferForLog, "Display operation is successfull\n");
+    write_to_log(stringBufferForLog);
+    memset(stringBufferForLog, 0, sizeofString);
+}
+
+void sortAll(char**command , int counter)
+{
+    return;
+}
+
+char* searchStudent(const char* name, int fd, char* row )
+{
+    int index = 0;
+    char c;
+    int read_bytes; 
+    int file_read=0;
+    // char row[256];
+    char stringBufferForLog[512]; 
+
+    memset(row, 0, sizeof(row));
+    memset(stringBufferForLog, 0, sizeof(stringBufferForLog));
+    while (file_read == 0) 
+    {
+        read_bytes = read(fd, &c, 1);
+        if (read_bytes == -1) 
+           perror("read while: -1");
+        if (read_bytes == 0) 
+            file_read = 1;
+        
+        if(c != ',')
+            row[index++]=c;
+        else{
+            if(strncmp(row, name, strlen(row)) == 0)
+            {
+                row[index++]=c;
+                while(c != '\n')
+                {
+                    read_bytes = read(fd, &c, 1);
+                    if (read_bytes == -1) 
+                        perror("read while: -1");
+                    if (read_bytes == 0) 
+                        file_read = 1;
+
+                    row[index++]=c;
+                }
+                row[index] = '\0';
+                int sizeofString = sprintf(stringBufferForLog, "Found entered student name in the file: %s\n", row);
+                write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+                write_to_log(stringBufferForLog);
+                return row;
+            }
+            else{
+                while(c != '\n')
+                {
+                    read_bytes = read(fd, &c, 1);
+                    if (read_bytes == -1) 
+                        perror("read while: -1");
+                    if (read_bytes == 0) 
+                        file_read = 1;
+                }
+                memset(row, 0, 256);
+                index = 0;
+            }
+        }
+    }
+    int sizeofString = sprintf(stringBufferForLog, "Student is not found in the file: %s\n", row);
+    write(STDOUT_FILENO, stringBufferForLog, sizeofString);
+    memset(row, 0, 256);
+    return NULL;
+}
+
+void addingStudent(char** command, int counter)
+{
+    char name[24]; 
+    char grade[4];
+    int buffer_len = 1024;
+    char buffer[buffer_len];
+    char stringBufferForLog[buffer_len];
+    char student[256];
+    memset(buffer, 0, buffer_len);
+    memset(stringBufferForLog, 0, buffer_len);
+    memset(student, 0, sizeof(student));
 
     int studentAdd_fd = open(command[counter-1], O_CREAT | O_RDWR | O_NONBLOCK | O_APPEND,S_IRWXU | S_IRWXG | S_IRWXO);
     if(studentAdd_fd == -1)
@@ -210,18 +291,23 @@ void addingStudent(char** command, int counter)
             strcat(grade, "\n");
         }
     }
-    int sizeofString = sprintf(stringBufferForLog, "grade %s\n", grade);
+    searchStudent(name, studentAdd_fd, student);
+    int sizeofString = sprintf(stringBufferForLog, "Student %s\n", grade);
     write(STDOUT_FILENO, stringBufferForLog, sizeofString);
-    // char* student = searchStudent(name, studentAdd_fd);
-    // sizeofString = sprintf(stringBufferForLog, "student %s\n", student);
-    // write(STDOUT_FILENO, stringBufferForLog, sizeofString);
-    // if(student != NULL)
-    // {
-    //     char logbuff[1024];
-    //     snprintf(logbuff, 1024, "Entered student name is found \n");
-    //     write_to_log(logbuff);
-    //     return;
-    // }
+    memset(stringBufferForLog, 0, sizeofString);
+    if(student != NULL )
+    {
+        char logbuff[1024];
+        snprintf(logbuff, 1024, "Entered student name was found \n");
+        write_to_log(logbuff);
+        if(close(studentAdd_fd)== -1){
+            int sizeofString = sprintf(stringBufferForLog, "Close syscall error when adding to file\n");
+            write_to_log(stringBufferForLog);
+            memset(stringBufferForLog, 0, sizeofString);
+            perror("close");
+        }
+        return;
+    }
     // else
     // {
         // printf("name is %s\n", name);
@@ -231,7 +317,6 @@ void addingStudent(char** command, int counter)
         strcat(name, grade);
         strcpy(buffer, name);
         
-    printf("%s\n", buffer);
         int offset = lseek(studentAdd_fd, 0, SEEK_END);
         if(offset == -1){
             int sizeofString = sprintf(stringBufferForLog, "lseek syscall error when adding to file\n");
@@ -257,7 +342,6 @@ void addingStudent(char** command, int counter)
         sizeofString = sprintf(stringBufferForLog, "Student succesfully added\n");
         write_to_log(stringBufferForLog);
         memset(stringBufferForLog, 0, sizeofString);
-    return;
     // }
     
 }
@@ -292,12 +376,6 @@ void help_command()
     sizeofString = sprintf(stringBufferForWrite, "listSome \"count\" \"page_num\" \"filename.txt\"\n");
     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
     memset(stringBufferForWrite, 0, sizeofString);
-    return;
-}
-
-int choose_syscall(const char** commands){
-    //TODO : implement enum with syscall function by parsing command
-    return 1;
 }
 
 void parse_command(const char *command, char** parsed_commands) {
@@ -496,6 +574,7 @@ int main(){
             sizeofString = sprintf(stringBufferForWrite, "Command %d : %s \n", counter, command[counter++]);
             write(STDOUT_FILENO, &stringBufferForWrite, sizeofString);
             memset(stringBufferForWrite, 0, sizeofString);
+            // counter++;
         }
         sizeofString = sprintf(stringBufferForWrite, "Valid command entered, executing... command >> %s, \n", command[0]);
         write_to_log(stringBufferForWrite);
@@ -549,7 +628,7 @@ int main(){
                         memset(stringBufferForWrite, 0, sizeofString);
                         perror("close");
                     }
-                    int sizeofString = sprintf(stringBufferForWrite, "%s File Creation is Successfull\n", command[1]);
+                    sizeofString = sprintf(stringBufferForWrite, "%s File Creation is Successfull\n", command[1]);
                     write_to_log(stringBufferForWrite);
                     memset(stringBufferForWrite, 0, sizeofString);
                     exit(EXIT_SUCCESS);
@@ -560,14 +639,16 @@ int main(){
                 childpid = fork();
                 if(childpid == -1 )
                 {
-                    //write to log file
+                    sizeofString = sprintf(stringBufferForWrite, "Fork error when creating file %s\n", command[1]);
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
                     perror("fork");
                 }
                 else if(childpid == 0)
                 {
                     addingStudent(command, counter);
 
-                    int sizeofString = sprintf(stringBufferForWrite, "Adding Student is Successfull\n");
+                    sizeofString = sprintf(stringBufferForWrite, "Adding Student is Successfull\n");
                     write_to_log(stringBufferForWrite);
                     memset(stringBufferForWrite, 0, sizeofString);
                     exit(EXIT_SUCCESS);
@@ -578,7 +659,9 @@ int main(){
                 childpid = fork();
                 if(childpid == -1 )
                 {
-                    //write to log file
+                    sizeofString = sprintf(stringBufferForWrite, "Fork error when searching file %s\n", command[1]);
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
                     perror("fork");
                 }
                 else if(childpid == 0)
@@ -586,31 +669,35 @@ int main(){
                     int search_fd = open(command[counter-1], O_CREAT | O_RDWR | O_NONBLOCK | O_APPEND, mode );
                     if(search_fd == -1)
                     {
-                        int sizeofString = sprintf(stringBufferForWrite, "File Open failed in child...exiting\n");
+                        sizeofString = sprintf(stringBufferForWrite, "File Open failed in child...exiting\n");
                         write_to_log(stringBufferForWrite);
                         memset(stringBufferForWrite, 0, sizeofString);
                         perror("open");
                     }
                     char studentName[256];
+                    char row[256];
                     memset(studentName, 0, sizeof(studentName));
+                    memset(row, 0, sizeof(row));
                     strcpy(studentName, command[1]);
                     strcat(studentName, " ");
                     strcat(studentName, command[2]);
-                    int sizeofString = sprintf(stringBufferForWrite, "name %s\n", studentName);
-                    write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
-                    memset(stringBufferForWrite, 0, sizeofString);
-                    char* student = searchStudent(studentName, search_fd);
-                    sizeofString = sprintf(stringBufferForWrite, "student %s\n", student);
+
+                    searchStudent(studentName, search_fd, row);
+                    sizeofString = sprintf(stringBufferForWrite, "student %s\n", row);
                     write(STDOUT_FILENO, stringBufferForWrite, sizeofString);
                     memset(stringBufferForWrite, 0, sizeofString);
                     if(close(search_fd)== -1){
-                        //write log file
+                        sizeofString = sprintf(stringBufferForWrite, "File close failed in child...exiting\n");
+                        write_to_log(stringBufferForWrite);
+                        memset(stringBufferForWrite, 0, sizeofString);
                         perror("close");
                     }
                     //take student name and grade
                     sizeofString = sprintf(stringBufferForWrite, "Searching Student is Successfull\n");
                     write_to_log(stringBufferForWrite);
                     memset(stringBufferForWrite, 0, sizeofString);
+                    memset(row, 0, sizeofString);
+
                     exit(EXIT_SUCCESS);
                 }
             break; 
@@ -622,12 +709,15 @@ int main(){
                 childpid = fork();
                 if(childpid == -1 )
                 {
-                    //write to log file
+                    sizeofString = sprintf(stringBufferForWrite, "Fork error when displaying all %s\n", command[0]);
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
                     perror("fork");
                 }
                 else if(childpid == 0)
                 {
-                    display(command, counter, 5);
+                    //maybe return error code or success code
+                    display(command, counter, -1);
 
                     int sizeofString = sprintf(stringBufferForWrite, "Searching text file is Successfull\n");
                     write_to_log(stringBufferForWrite);
@@ -640,7 +730,9 @@ int main(){
                 childpid = fork();
                 if(childpid == -1 )
                 {
-                    //write to log file
+                    sizeofString = sprintf(stringBufferForWrite, "Fork error when displaying grades %s\n", command[0]);
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
                     perror("fork");
                 }
                 else if(childpid == 0)
@@ -655,21 +747,35 @@ int main(){
             break; 
 
             case LISTSOME:
+                childpid = fork();
+                if(childpid == -1 )
+                {
+                    sizeofString = sprintf(stringBufferForWrite, "Fork error when listing some grades.\n");
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
+                    perror("fork");
+                }
+                else if(childpid == 0)
+                {
+                    display_some(command, counter);
+
+                    int sizeofString = sprintf(stringBufferForWrite, "Searching text file is Successfull\n");
+                    write_to_log(stringBufferForWrite);
+                    memset(stringBufferForWrite, 0, sizeofString);
+                    exit(EXIT_SUCCESS);
+                }
             break; 
 
             default:
             break;
         }
-        //wait(NULL);
-
-
+        wait(NULL);
         //deallocate memory 
         for (int i = 0; i < 8; i++) {
             free(command[i]);
         }
         free(command);
-
+        
     }
-
     return 0;
 }
