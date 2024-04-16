@@ -2,13 +2,13 @@
 #define __SYSTEM_COMMON_H
 
 
-void splitStringIntoArray_S(const char* str, const char delim, char** splitted );
+int splitStringIntoArray_S(const char* str, const char delim, char** splitted );
 
-void splitStringIntoArray_I(const char* str, const char delim, char** splitted, int count);
+int splitStringIntoArray_I(const char* str, const char delim, char** splitted, int count);
 
 char* convertIntegerToString(const int* arr, const char delim, const int arr_size);
 
-int* convertStringArrayToInteger(char** str);
+int* convertStringArrayToInteger(char** str, int count);
 
 int convertSingleStringToInteger(char* str);
 

@@ -17,6 +17,14 @@ struct secChildParam{
     char* command;
 };
 
+int addValuesInInteger(int* convertedArray, int size){
+    int sum = 0;
+    for (int i = 0; i < size; ++i) {
+        sum += convertedArray[i];
+    }
+    return sum;
+}
+
 //return value must be error code 
 int writeToFirstFifo(const char* str, int fd){
 
@@ -28,14 +36,37 @@ int writeToFirstFifo(const char* str, int fd){
         return -1;
         //fail oldugunda error code ver
     }
-
     return 1;
-
 }
 
-void parseFifo(const char* buffer, const char delim){
+int parseFifo(const char* buffer, const char delim){
+
+    char** splitted;
+    int* convertedArray;
+    int count = countHowManyElementsWillExtract(buffer, delim);
+    splitted = (char**)malloc(sizeof(char*)*count);
+    splitStringIntoArray_I(buffer, delim, splitted, count);
+    printf("cc : %d\n", strlen(splitted[0]));
+    for(int i = 0; i < count; i++){
+
+        printf("ss : %s\n", splitted[i]);
+    }
 
 
+    convertedArray = convertStringArrayToInteger(splitted, count);
+    for(int i = 0; i < count; i++){
+
+        printf("hg int : %d\n", convertedArray[i]);
+    }
+
+    int sum = addValuesInInteger(convertedArray, count);
+    
+    for(int i = 0; i < count; i++){
+        free(splitted[i]);
+    }
+    free(splitted);
+    free(convertedArray);
+    return sum;
 }
 
 
@@ -72,6 +103,18 @@ int main(int argc, char **argv)
         write(STDOUT_FILENO, err, strlen(err));
         memset(err, 0, sizeof(err));
         perror("mkfifo failed");
+        unlink(FIRST_CHILD_FIFO);
+        unlink(SEC_CHILD_FIFO);
+        return -1;
+    }
+
+    if(mkfifo(SEC_CHILD_FIFO, 0666) == -1){
+        char err[256]= "mkfifo failed\n";
+        write(STDOUT_FILENO, err, strlen(err));
+        memset(err, 0, sizeof(err));
+        perror("mkfifo failed");
+        unlink(FIRST_CHILD_FIFO);
+        unlink(SEC_CHILD_FIFO);
         return -1;
     }
 
@@ -79,46 +122,17 @@ int main(int argc, char **argv)
     switch(pid)
     {
         case 0 :
+            sleep(10);
             int childBufferCounter = 0;
             int childPid = getpid();
             int log_written = sprintf(log_buffer, "Entered Child Process 1 : %d\n", childPid);
             char* childBuf;
             write(STDOUT_FILENO, &log_buffer, log_written);
             memset(log_buffer, 0, sizeof(log_written));
-            // firstFifoFd = open(FIRST_CHILD_FIFO, O_RDONLY);
-            // if(firstFifoFd == -1){
-            //     perror("open failed");
-            //     exit(EXIT_FAILURE);
-            // }
-            // for(;;){
-            //     char c; 
-            //     char log[256];
-            //     int written = sprintf(log, "HELLO FROM FUNCTION \n");
-            //     write(STDOUT_FILENO, log, written);
-            //     int numBytesRead = read(firstFifoFd, &c, sizeof(c));
-            //     if(numBytesRead == 0){
-            //         buffer[childBufferCounter] = '\0';
-            //         break;
-            //     }
-            //     else if(numBytesRead == -1){
-            //         perror("read\n");
 
-            //     }
-            //     else{
-            //         buffer[childBufferCounter++] = c;
-            //     }
-            // }
             childBuf = readOneByOne(FIRST_CHILD_FIFO);
-            // if(close(firstFifoFd) == -1){
-            //     perror("close failed");
-            //     exit(EXIT_FAILURE);
-            // }
-            
+            int sum = parseFifo(childBuf, ',');
 
-
-
-            // ssize_t numBytesRead = read(firstFifoFd, buffer, sizeof(buffer));
-            // parseFifo(buffer, ',');
             int numBytes = write(STDOUT_FILENO, childBuf, strlen(childBuf));
             if(numBytes == -1){
                 perror("write failed");

@@ -45,12 +45,11 @@ char* convertIntegerToString(const int* arr, const char delim, const int arr_siz
     return str;
 }
 
-int* convertStringArrayToInteger(char** str){
+int* convertStringArrayToInteger(char** str, int count){
 
-    int array_size = sizeof(str);
-    int *arr = (int*)malloc(sizeof(int)*array_size);
+    int *arr = (int*)malloc(sizeof(int)*count);
 
-    for(int i = 0; i < array_size; i++){
+    for(int i = 0; i < count; i++){
         int val = convertSingleStringToInteger(str[i]);
         if(val < 0){
             exit(EXIT_FAILURE);
@@ -83,17 +82,17 @@ int convertSingleStringToInteger(char* str){
 }
 
 //returnden sonra splitted stringini free yapmadan cikma
-void splitStringIntoArray_S(const char* str, const char delim, char** splitted){
+int splitStringIntoArray_S(const char* str, const char delim, char** splitted){
 
     int count = countHowManyElementsWillExtract(str, delim);
     printf("count : %d\n", count);
-    splitStringIntoArray_I(str, delim, splitted, count);
+    return splitStringIntoArray_I(str, delim, splitted, count);
 }
 
-void splitStringIntoArray_I(const char* str, const char delim, char** splitted, int count){
+int splitStringIntoArray_I(const char* str, const char delim, char** splitted, int count){
 
     char *tmp = (char*)str;
-    splitted = (char**)malloc(sizeof(char*)*count);
+    // splitted = (char**)malloc(sizeof(char*)*count);
     int inside_counter = 0;
     char temp_element[32];
     int i = 0;
@@ -112,9 +111,12 @@ void splitStringIntoArray_I(const char* str, const char delim, char** splitted, 
         }
         else{
             temp_element[inside_counter++] =*tmp;
-            tmp++;
         }
+        tmp++;
+        printf("aaa\n");
     }
+    
+    return count;
 
 }
 
