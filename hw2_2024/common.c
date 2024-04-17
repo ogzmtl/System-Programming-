@@ -45,36 +45,35 @@ char* convertIntegerToString(const int* arr, const char delim, const int arr_siz
     return str;
 }
 
-int* convertStringArrayToInteger(char** str, int count){
-
-    int *arr = (int*)malloc(sizeof(int)*count);
+void convertStringArrayToInteger(char** str, int count, int*arr){
 
     for(int i = 0; i < count; i++){
         int val = convertSingleStringToInteger(str[i]);
         if(val < 0){
+            free(str);
+            free(arr);
             exit(EXIT_FAILURE);
         }
         arr[i] = val;
     }
-
-    return arr;
 }
 
-int convertSingleStringToInteger(char* str){
+int convertSingleStringToInteger(const char* str){
 
-    char *endptr;
+    char *endptr=NULL;
     int val = strtol(str, &endptr, 10);
     int errno = 0;
 
     if(errno != 0){
         perror("strtol");
+        perror("convertStringArrayToInteger");
     }
     
     if (endptr == str) {
         char err[256]; 
         snprintf(err, 256, "No digits were found\n");
         write(STDOUT_FILENO, err, strlen(err));
-        return -1;
+        return 1;
     }
 
     return val;
@@ -113,10 +112,53 @@ int splitStringIntoArray_I(const char* str, const char delim, char** splitted, i
             temp_element[inside_counter++] =*tmp;
         }
         tmp++;
-        printf("aaa\n");
     }
     
     return count;
+
+}
+
+char* splitStringIntoArray_Custom(const char* str, char** splitted, char* compared){
+
+    char *tmp = (char*)str;
+    // splitted = (char**)malloc(sizeof(char*)*count);
+    int inside_counter = 0;
+    char temp_element[32];
+    int i = 0;
+
+    memset(temp_element, 0, sizeof(temp_element));
+    memset(compared,0,sizeof(char));
+
+    while(*tmp){
+        if(*tmp == ',' || *tmp == '!')
+        {
+            temp_element[inside_counter] = '\0';
+            if(*tmp == '!'){
+                
+                compared = (char*)malloc(sizeof(char) * inside_counter);
+                printf("temp element: %s\n", temp_element);
+                strcpy(compared, temp_element);
+            }
+            else{
+                splitted[i] = (char*)malloc(sizeof(char)*inside_counter);
+                strcpy(splitted[i], temp_element);
+                i++;
+            }
+            // temp_element[inside_counter] = '\0';
+            // splitted[i] = (char*)malloc(sizeof(char)*inside_counter);
+            // strcpy(splitted[i], temp_element);
+            // i++;
+            memset(temp_element, 0, sizeof(temp_element));
+            inside_counter = 0;
+        }
+        else{
+            temp_element[inside_counter++] =*tmp;
+        }
+        tmp++;
+    }
+    
+    free(tmp);
+    return compared;
 
 }
 
@@ -136,7 +178,6 @@ int countHowManyElementsWillExtract(const char *str, const char delim){
 }
 
 char* readOneByOne(const char* firstChildFifo){
-
     
     int numBytesRead = 0;
     int childBufferCounter = 0;
@@ -144,8 +185,8 @@ char* readOneByOne(const char* firstChildFifo){
     // char buffer[256];
     memset(buffer, 0, 6);
 
-    int firstFifoFd = open(firstChildFifo, O_RDONLY);
-    if(firstFifoFd == -1){
+    int fd = open(firstChildFifo, O_RDONLY);
+    if(fd == -1){
         perror("open failed");
         free(buffer);
         exit(EXIT_FAILURE);
@@ -157,7 +198,7 @@ char* readOneByOne(const char* firstChildFifo){
 
         memset(log, 0, sizeof(log));
         fflush(stdout);
-        numBytesRead = read(firstFifoFd, &c, sizeof(c));
+        numBytesRead = read(fd, &c, sizeof(c));
         if(numBytesRead == 0){
             
             buffer[childBufferCounter] = '\0';
@@ -166,6 +207,7 @@ char* readOneByOne(const char* firstChildFifo){
         else if(numBytesRead == -1){
             perror("read");
             free(buffer);
+            close(fd);
             return NULL;
         }
         else{
@@ -175,7 +217,7 @@ char* readOneByOne(const char* firstChildFifo){
             buffer[childBufferCounter++] = c;
         }
     }
-    if(close(firstFifoFd) == -1){
+    if(close(fd) == -1){
         perror("close");
         free(buffer);
         return NULL;
@@ -184,4 +226,18 @@ char* readOneByOne(const char* firstChildFifo){
 
     write(STDOUT_FILENO, buffer, strlen(buffer));
     return buffer;
+}
+
+int check_command(const char** splitted, const char* command, int count){
+
+    int flag=0;
+    for(int i = 0; i < count; i++){
+        // printf("compare %s: %d\n", splitted[i], strlen(splitted[i]));
+        if(strncmp(splitted[i], command, strlen(command)) == 0)
+        {
+            flag = 1;
+        }
+    }
+
+    return flag;
 }

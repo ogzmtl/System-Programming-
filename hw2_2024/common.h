@@ -8,16 +8,18 @@ int splitStringIntoArray_I(const char* str, const char delim, char** splitted, i
 
 char* convertIntegerToString(const int* arr, const char delim, const int arr_size);
 
-int* convertStringArrayToInteger(char** str, int count);
+void convertStringArrayToInteger(char** str, int count, int*arr);
 
-int convertSingleStringToInteger(char* str);
+int convertSingleStringToInteger(const char* str);
 
 int countHowManyElementsWillExtract(const char *str, const char delim);
 
 char* readOneByOne(const char* firstChildFifo);
 
+char* splitStringIntoArray_Custom(const char* str, char** splitted, char* compared);
+
 // void writeToLog(const char* log);
 
-// int check_command(const char* buffer, const char* command);
+int check_command(const char** splitted, const char* command, int count);
 
 #endif
