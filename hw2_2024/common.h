@@ -18,6 +18,8 @@ char* readOneByOne(const char* firstChildFifo);
 
 char* splitStringIntoArray_Custom(const char* str, char** splitted, char* compared);
 
+char* readOneByOne_Custom(const char* firstChildFifo,const char delim1, const char delim2);
+
 // void writeToLog(const char* log);
 
 int check_command(const char** splitted, const char* command, int count);
