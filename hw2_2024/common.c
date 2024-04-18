@@ -21,7 +21,7 @@ char* convertIntegerToString(const int* arr, const char delim, const int arr_siz
 
     total_len+=2;
 
-    char* str = (char*)malloc(total_len*sizeof(char));
+    char* str = (char*)calloc(total_len,sizeof(char));
     int point = 0;
     // printf("successfully malloc operation done 26\n");
 
@@ -54,7 +54,7 @@ void convertStringArrayToInteger(char** str, int count, int*arr){
             // free(str);
             // free(arr);
             return;
-            exit(EXIT_FAILURE);
+            // exit(EXIT_FAILURE);
         }
         arr[i] = val;
     }
@@ -62,7 +62,7 @@ void convertStringArrayToInteger(char** str, int count, int*arr){
 
 int convertSingleStringToInteger(const char* str){
 
-    char *endptr=NULL;
+    char *endptr;
     int val = strtol(str, &endptr, 10);
     int errno = 0;
 
@@ -85,7 +85,7 @@ int convertSingleStringToInteger(const char* str){
 int splitStringIntoArray_S(const char* str, const char delim, char** splitted){
 
     int count = countHowManyElementsWillExtract(str, delim);
-    printf("count : %d\n", count);
+    // printf("count : %d\n", count);
     return splitStringIntoArray_I(str, delim, splitted, count);
 }
 
@@ -103,7 +103,7 @@ int splitStringIntoArray_I(const char* str, const char delim, char** splitted, i
         if(*tmp == delim)
         {
             temp_element[inside_counter] = '\0';
-            splitted[i] = (char*)malloc(sizeof(char)*inside_counter);
+            splitted[i] = (char*)calloc(inside_counter, sizeof(char));
             // printf("successfuly done malloc 106\n");
             strcpy(splitted[i], temp_element);
             i++;
@@ -120,10 +120,11 @@ int splitStringIntoArray_I(const char* str, const char delim, char** splitted, i
 
 }
 
-char* splitStringIntoArray_Custom(const char* str, char** splitted, char* compared){
+char* splitStringIntoArray_Custom(const char* str, char** splitted){
 
     char *tmp = (char*)str;
     // splitted = (char**)malloc(sizeof(char*)*count);
+    char* compared = (char*)calloc(7,sizeof(char));
     int inside_counter = 0;
     char temp_element[32];
     int i = 0;
@@ -136,10 +137,14 @@ char* splitStringIntoArray_Custom(const char* str, char** splitted, char* compar
             // printf("tempo :%s, %d\n", temp_element, inside_counter);
             if(*tmp == '!'){
                 
-                compared = (char*)malloc(sizeof(char) * inside_counter);
+                // compared = (char*)malloc(sizeof(char) * inside_counter);
                 // printf("successfuly done malloc 140\n");
-                printf("temp element: %s\n", temp_element);
-                strcpy(compared, temp_element);
+                // printf("temp element: %s\n", temp_element);
+                // strcpy(compared, temp_element);
+                for(int j = 0; j < inside_counter-1; j++){
+                    compared[j] = temp_element[j];
+                }
+                compared[inside_counter-1] = '\0';
             }
             else{
                 splitted[i] = (char*)calloc(inside_counter, sizeof(char));
@@ -164,6 +169,7 @@ char* splitStringIntoArray_Custom(const char* str, char** splitted, char* compar
         }
         tmp++;
     }
+    printf("convertedArray x : %s \n", compared);
 
     return compared;
 
@@ -188,7 +194,7 @@ char* readOneByOne(const char* firstChildFifo){
     
     int numBytesRead = 0;
     int childBufferCounter = 0;
-    char* buffer = (char*)malloc(sizeof(char)*6);
+    char* buffer = (char*)calloc(32, sizeof(char));
     // printf("successfuly done malloc 188\n");
 
     // char buffer[256];
@@ -242,7 +248,7 @@ char* readOneByOne_Custom(const char* firstChildFifo, const char delim1, const c
     
     int numBytesRead = 0;
     int childBufferCounter = 0;
-    char* buffer = (char*)malloc(sizeof(char)*6);
+    char* buffer = (char*)calloc(12,sizeof(char));
     // printf("successfuly done malloc 188\n");
     int delim_flag1 = 0;
     int delim_flag2 = 0;
@@ -268,8 +274,12 @@ char* readOneByOne_Custom(const char* firstChildFifo, const char delim1, const c
         numBytesRead = read(fd, &c, sizeof(c));
         // printf("readde gelmedim %d-%d\n", c, numBytesRead);
         if(numBytesRead == 0){
-            printf("readde gelmsedim %d %d\n", delim_flag1, delim_flag2);
+            // printf("readde gelmsedim %d %d\n", delim_flag1, delim_flag2);
             if(delim_flag1 && delim_flag2){
+                if(childBufferCounter+1 % 12 == 0){
+                    int newSize = childBufferCounter + 12;
+                    buffer = (char *)realloc(buffer, newSize*sizeof(char)); 
+                }
                 buffer[childBufferCounter] = '\0';
                 break;
             }
@@ -284,15 +294,16 @@ char* readOneByOne_Custom(const char* firstChildFifo, const char delim1, const c
             if(c == delim1)
             {
                 delim_flag1 = 1;
-                printf("delim1 %c \n", c );
+                // printf("delim1 %c \n", c );
             }
             if(c == delim2){
                 delim_flag2 = 1;
-                printf("delim2 %c \n", c );
+                // printf("delim2 %c \n", c );
             }
 
-            if(childBufferCounter+1 % 6 == 0){
-                buffer = (char *)realloc(buffer, sizeof(char)*(childBufferCounter*2)); 
+            if(childBufferCounter+1 % 12 == 0){
+                int newSize = childBufferCounter + 12;
+                buffer = (char *)realloc(buffer, newSize*sizeof(char)); 
             }
             if(c == '\0' && delim_flag1 && delim_flag2){
                 buffer[childBufferCounter++] = c;
@@ -304,6 +315,7 @@ char* readOneByOne_Custom(const char* firstChildFifo, const char delim1, const c
             
 
         }
+        printf("Buffer LEn %d : \n", strlen(buffer));
         // printf("flag 1 : %d\n", delim_flag1);
         // printf("flag 2 : %d \n", delim_flag2);
         // printf("X\n");

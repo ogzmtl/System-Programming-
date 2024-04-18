@@ -25,21 +25,20 @@ int addValuesInInteger(int* convertedArray, int size){
 
 void intoStringWithDelim(int sum, char* buffer, const char delim){
     int num_written  = sprintf(buffer, "%d", sum);
-    printf("WRITTEN SIZE : %d\n", num_written);
+    // printf("WRITTEN SIZE : %d\n", num_written);
     int len = 0;
     buffer[num_written] = delim;
     buffer[num_written + 1] = '\0';
 }
 
-long int multiplyValuesInInteger(int* convertedArray, int size){
+long int multiplyValuesInInteger(long int* convertedArray, int size){
     long int result = 1;
     for (int i = 0; i < size; ++i) {
         result *= convertedArray[i];
     }
-    printf("HIIII\n");
     return result;
 }
-int multiplyOperation(int* convertedArray, int count){
+int multiplyOperation(long int* convertedArray, int count){
 
 
     long int result = multiplyValuesInInteger(convertedArray, count);
@@ -62,24 +61,30 @@ int writeToFirstFifo(const char* str, int fd){
 }
 
 int parseSecondfifo(const char* buffer, const char delim){
-    char** splitted;
-    int* convertedArray;
+    // char** splitted;
+    char **splitted;
+    long int convertedArray[32];
     char *endptr = NULL;
     int flag = 0;
-    char* convertedArrayStr= NULL;
+    char* convertedArrayStr = NULL;
     int count = countHowManyElementsWillExtract(buffer, delim);
-    // printf("Count of elements: %d\n", count);
+    printf("Count of elements: %d\n", count);
     splitted = (char**)calloc(count, sizeof(char*));
-    // printf("\n\nADKSADKLASDLK successfuly done malloc 157hw2\n");
+    if (splitted == NULL) {
+        printf("Memory allocation failed!\n");
+        free(convertedArrayStr);
+        return -1;
+    }
+    printf("\n\nADKSADKLASDLK successfuly done malloc 157hw2\n");
 
-    convertedArrayStr = splitStringIntoArray_Custom(buffer, splitted,convertedArrayStr);
-    convertedArray = (int*)calloc(count, sizeof(int));
+    convertedArrayStr = splitStringIntoArray_Custom(buffer, splitted);
+    // convertedArray = (int*)calloc(count, sizeof(int));
     // printf("successfuly done malloc 161hw2\n");
     for(int i = 0; i < count-1; i++){
         if(strncmp(splitted[i], "multiply", 8) == 0){
             flag = 1;
         }
-        printf("ss necwcc: %d\n",strlen( splitted[i]));
+        // printf("ss necwcc: %d\n",strlen( splitted[i]));
         convertedArray[i] = convertSingleStringToInteger(splitted[i]);
     }
     if(strncmp(splitted[count-1], "multiply", 8) == 0){
@@ -87,12 +92,12 @@ int parseSecondfifo(const char* buffer, const char delim){
     }
     // printf("HIIII0 %d\n", flag);
     if(flag == 0){
-        // free(convertedArrayStr);
+        free(convertedArrayStr);
         // free(convertedArray);
-        // for(int i = 0; i < count+1; i++){
-        //     free(splitted[i]);
-        // }
-        // free(splitted);
+        for(int i = 0; i < count; i++){
+            free(splitted[i]);
+        }
+        free(splitted);
         return -1;
     }
     // printf("HIIII2\n");
@@ -104,7 +109,7 @@ int parseSecondfifo(const char* buffer, const char delim){
     long int res =  multiplyValuesInInteger(convertedArray, count-1);
     // printf("HIIII4\n");
     // for(int i = 0; i < count; i++){
-    //     printf("convertedArray : %d \n", convertedArray[i]);
+        printf("convertedArray : %s \n", convertedArrayStr);
     // }
     int addRes = strtol(convertedArrayStr, &endptr, 10);
     // printf("HIIII5\n");
@@ -112,12 +117,11 @@ int parseSecondfifo(const char* buffer, const char delim){
     printf("Addition result: %d\n", addRes);
     printf("Total result: %ld\n", res + addRes);
 
-    for(int i = 0; i < count+1; i++){
+    for(int i = 0; i < count; i++){
         free(splitted[i]);
     }
     free(convertedArrayStr);
-    free(convertedArray);
-
+    // free(convertedArray);
     free(splitted);
     return res+addRes;
 }
@@ -127,10 +131,10 @@ int parseFifo(const char* buffer, const char delim){
     char** splitted;
     int* convertedArray;
     int count = countHowManyElementsWillExtract(buffer, delim);
-    splitted = (char**)malloc(sizeof(char*)*count);
+    splitted = (char**)calloc(count, sizeof(char*));
     // printf("XXXXXX-------count: %d\n", count);
     // printf("successfuly done malloc 212\n");
-    convertedArray = (int*)malloc(sizeof(int)*count);
+    convertedArray = (int*)calloc(count,sizeof(int));
     // printf("successfuly done malloc 215\n");
 
     splitStringIntoArray_I(buffer, delim, splitted, count);
@@ -149,7 +153,7 @@ int parseFifo(const char* buffer, const char delim){
     free(convertedArray);
     return sum;
 }
-static int spawnedProcess=0;
+static int spawnedProcess=2;
 static int signalCnt;
 static void sigchldHandler(int sign){
     int status, savedErrno;
@@ -158,12 +162,14 @@ static void sigchldHandler(int sign){
     savedErrno = errno;
     while((childpid = waitpid(-1, &status, WNOHANG)) > 0){
         printf("handler: Reaped child %ld\n", (long) childpid);
-        signalCnt++;
+        spawnedProcess--;
     }
     if (childpid == -1 && errno != ECHILD)
         perror("waitpid");
     if(sign == SIGINT){
         printf("SIGINT handled... Your operation will done after process done\n");
+        unlink(FIRST_CHILD_FIFO);
+        unlink(SEC_CHILD_FIFO);
     }
 
     errno = savedErrno;
@@ -242,11 +248,11 @@ int main(int argc, char **argv)
     switch(pid)
     {
         case 0 :
-        spawnedProcess++;
+        // spawnedProcess++;
             sleep(1);
             // int childBufferCounter = 0;
             int childPid = getpid();//error check
-            int log_written = sprintf(log_buffer, "Entered Child Process 1 : %d\n", childPid);
+            int log_written = sprintf(log_buffer, "Entered Child Process 1. (pid : %d)\n", childPid);
             char* childBuf;
             write(STDOUT_FILENO, &log_buffer, log_written);
             memset(log_buffer, 0, log_written);
@@ -266,6 +272,7 @@ int main(int argc, char **argv)
             intoStringWithDelim(sum, childBuf, '!');
             numBytes = sprintf(log_buffer, "\nSum (exlamation ended): %s", childBuf);
             write(STDOUT_FILENO, log_buffer, numBytes);
+            memset(log_buffer, 0, strlen(log_buffer));
             // free(childBuf);
 
             // open wronly fifo2
@@ -286,6 +293,10 @@ int main(int argc, char **argv)
                 free(childBuf);
                 exit(EXIT_FAILURE);
             }
+            numBytes = sprintf(log_buffer, "Successfully write to first child to second fifo file\n");
+            write(STDOUT_FILENO, log_buffer, numBytes);
+            memset(log_buffer, 0, strlen(log_buffer));
+
             if(close(fifo2) == -1){
                 perror("close failed");
                 memset(childBuf, 0, strlen(childBuf));
@@ -308,7 +319,7 @@ int main(int argc, char **argv)
             int r; 
             int randomIntegerArray[argument];
             for(int i = 0; i < argument; i++){
-                r = rand() % 100;
+                r = rand() % 10;
                 randomIntegerArray[i] = r;
             }
 
@@ -332,7 +343,7 @@ int main(int argc, char **argv)
                 break;
             }
 
-            int written_size = sprintf(buffer, "Array successfully written to first fifo\n");
+            int written_size = sprintf(buffer, "Array successfully written to first fifo ");
             write(STDOUT_FILENO, buffer, written_size);
             memset(buffer, 0, written_size);
 
@@ -352,12 +363,12 @@ int main(int argc, char **argv)
             switch(secPid){
                 case 0:
                 //child2
-                spawnedProcess++;
+                // spawnedProcess++;
                     sleep(1);
                     // char c; 
                     char* childBuff = NULL; 
                     int pid2= getpid();
-                    int log_written = sprintf(log_buffer, "Entered Child Process 2 : %d\n", pid2);
+                    int log_written = sprintf(log_buffer, "\nEntered Child Process 2. (pid : %d)\n", pid2);
                     write(STDOUT_FILENO, &log_buffer, log_written);
                     memset(log_buffer, 0, log_written);
                     // int fifo = open(SEC_CHILD_FIFO, O_RDONLY);
@@ -366,16 +377,16 @@ int main(int argc, char **argv)
                     //     // free(childBuff);
                     //     exit(EXIT_FAILURE);
                     // }
-                    printf("asdasdas\n");
+                    // printf("asdasdas\n");
                     childBuff = readOneByOne_Custom(SEC_CHILD_FIFO, ',', '!');
-                    printf("I Read to From Fifo : \n");
-                    int numBytesSecChild = write(STDOUT_FILENO, childBuff, strlen(childBuff));
-                    if(numBytesSecChild == -1){
-                        perror("write failed (parent to child2)\n");
-                        free(childBuff);
-                        // close(fifo);
-                        exit(EXIT_FAILURE);
-                    }
+                    // printf("I Read From Fifo : \n");
+                    // int numBytesSecChild = write(STDOUT_FILENO, childBuff, strlen(childBuff));
+                    // if(numBytesSecChild == -1){
+                    //     perror("write failed (parent to child2)\n");
+                    //     free(childBuff);
+                    //     // close(fifo);
+                    //     exit(EXIT_FAILURE);
+                    // }
 
                     // if(close(fifo) == -1){
                     //     perror("close failed in fifo 2\n");
@@ -383,7 +394,10 @@ int main(int argc, char **argv)
                     //     exit(EXIT_FAILURE);
                     // }
 
-                    parseSecondfifo(childBuff, ',');
+                    if(parseSecondfifo(childBuff, ',')== -1){
+                        free(childBuff);
+                        exit(EXIT_FAILURE);
+                    }
                     
                     free(childBuff);
                     exit(EXIT_SUCCESS);
@@ -397,14 +411,14 @@ int main(int argc, char **argv)
                     str = (char *)realloc(str, sizeof(char)*(strlen(str)+10));
                     char multip[10] = "multiply,";
                     int sizeBuffer = strlen(str);
-                    printf("size buffer , str %s, strlen(str) %d\n", str, sizeBuffer);
+                    // printf("size buffer , str %s, strlen(str) %d\n", str, sizeBuffer);
                     
                     for(int i =0; i < 9; i++){
                         str[sizeBuffer+i] = multip[i];
                     }
                     str[sizeBuffer+9] = '\0';
 
-                    printf("xI Write to fifo %s\n", str);
+                    // printf("xI Write to fifo %s\n", str);
                     int fdSecFifo = open(SEC_CHILD_FIFO, O_WRONLY);
                     if(fdSecFifo == -1){
                         perror("open failed in (fifo2) \n");
@@ -455,7 +469,7 @@ int main(int argc, char **argv)
             //     exit(EXIT_FAILURE);
             // }
             sigemptyset(&prevMask);
-            for(;;) 
+            while(spawnedProcess == 0) 
             {
                 
                 logSize = sprintf(log_buffer, "Proceeding...\n");

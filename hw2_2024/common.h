@@ -16,7 +16,7 @@ int countHowManyElementsWillExtract(const char *str, const char delim);
 
 char* readOneByOne(const char* firstChildFifo);
 
-char* splitStringIntoArray_Custom(const char* str, char** splitted, char* compared);
+char* splitStringIntoArray_Custom(const char* str, char** splitted);
 
 char* readOneByOne_Custom(const char* firstChildFifo,const char delim1, const char delim2);
 
