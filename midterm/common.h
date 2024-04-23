@@ -16,6 +16,9 @@
 #define SERVER_FIFO "/tmp/serverFifo"
 #define CLIENT_FIFO "/tmp/clientFifo_%ld"
 #define CLIENT_FIFO_NAME_LEN (sizeof(CLIENT_FIFO) + 20)
+#define CLIENT_SEM_TEMP "sem.%ld"
+#define CLIENT_SEM2_TEMP "sem2.%ld"
+#define CLIENT_SEM_NAME_LEN (sizeof(CLIENT_SEM_TEMP) + 20)
 
 struct request{
     pid_t pid;
@@ -23,7 +26,7 @@ struct request{
 };
 
 struct response{
-    int seqNum;
+    char command[256];
 };
 
 int writeToLog(const char* log);
