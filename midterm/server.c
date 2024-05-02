@@ -1,11 +1,11 @@
 #include "common.h"
 #include <semaphore.h>
 #include <signal.h>
+#include <dirent.h>
 //cocuklara kill sinyali gonder arrayde pid
 //clientlara kill sinyali gonder arrayde pid 
 long int clients[MAX_CLIENT];
 long int child[MAX_CHILD];
-
 
 void handler(int sig)
 {
@@ -88,11 +88,110 @@ file at the same time");
     }
 }
 
-void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum command_level com)
+void readFHelper(char* filename, int lineNum, char* line)
+{
+        printf("filename: %s %d\n", filename, lineNum);
+        int fd = open(filename, O_RDONLY);
+        if (fd == -1) {
+            return;
+            // return "File could not opened.";
+        }
+
+        // char line[BUFF_SIZE];
+        char c; 
+        size_t len = 0;
+        ssize_t read_bytes;
+        int line_number = 1;
+        int counter = 0;
+        read_bytes = read(fd, &c, 1);
+        while (read_bytes > 0) {
+            if (c != '\n') {
+                line[counter++] = c;
+            }
+            else{
+                if(line_number == lineNum)
+                {
+                    line[counter]='\0';
+                    close(fd);
+                    return;
+                }
+                else{
+                    memset(line,0, counter);
+                    counter = 0;
+                    line_number++;
+                    printf("%d\n", line_number);
+                }
+            }
+            read_bytes = read(fd, &c, 1);
+        }
+
+        close(fd);
+        // return "Line not found.";
+}
+int addLastLineWithZero(char* filename, int string_len, char* string)
+{
+    int fd;
+    fd = open(filename, O_WRONLY);
+    if(fd == -1){
+        perror("open");
+        return -1;
+    }
+    lseek(fd, 0, SEEK_END);
+    // for(int i = 0; i < string_len; i++){
+        write(fd, &string, string_len);
+    // }
+    close(fd);
+    return 1;
+}
+void writeTHelper(char* filename, int lineNum, char* string, char* buffR)
+{
+    int fd; 
+    char temp_buffer[BUFF_SIZE];
+    int string_len = snprintf(buffR, BUFF_SIZE, "%s\n", string);
+    int numBystesWritten = 0;
+    printf("buffr: %s\n", buffR);
+    //file doesn't exist
+    printf("xx : %d\n", string_len);
+    string[string_len-1] = '\n';
+    string[string_len]= '\0';
+    // buffR[string_len] = '\0';
+    DIR *dir = opendir(filename);
+    if (dir == NULL) {
+        // File does not exist, create it
+        int fd = open(filename, O_CREAT | O_WRONLY, 0644);
+        if (fd == -1) {
+            
+            perror("Error creating file");
+            return;
+        }
+    }
+    if(lineNum == -1)
+    {
+        memset(buffR,0,BUFF_SIZE);
+        fd = open(filename, O_WRONLY|O_APPEND);
+        if(fd == -1){
+            perror("open");
+            return ;
+        }
+        
+        write(fd, string, string_len);
+    // }
+        close(fd);
+            // addLastLineWithZero(filename, string_len,string);
+        numBystesWritten = snprintf(buffR, BUFF_SIZE, "String \"%s\" Added at the end of file \n", string);
+        buffR[numBystesWritten] = '\0';
+    }
+
+}
+
+void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum command_level com, char* foldername, int size)
 {
     int numBytesWrittenToFd = 0;
     struct response resp;
     char copiedBuff[BUFF_SIZE];
+    char temp_buffer[BUFF_SIZE];
+    char file_path[256] ="";
+    char donotUser[MAX_ARGUMENT][BUFF_SIZE];
     switch(com)
     {
         case HELP:
@@ -108,18 +207,71 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
                 numBytesWrittenToFd = helpHelper(splitted_command[1], copiedBuff);
                 strcpy(resp.command, copiedBuff);
                 resp.command[numBytesWrittenToFd] = '\0';
+                memset(copiedBuff, 0, sizeof(struct response));
                 write(clientWriteFd, &resp, sizeof(struct response));
             }
         break; 
 
-        // case LIST: 
-        // break;
+        case LIST:
+            DIR *dp; 
+            struct dirent *entry;
+            char temp_file[BUFF_SIZE] = ""; 
+            dp = opendir(foldername);
+            if(dp != NULL)
+            {
+                while (entry = readdir (dp))
+                {
+                    strcat(temp_file, entry->d_name);
+                    strcat(temp_file, "\n");
+                }
+                closedir (dp);
 
-        // case READF:
-        // break;
+                strcpy(resp.command, temp_file);
+                write(clientWriteFd, &resp, sizeof(struct response));
+            }
+            else
+                perror ("Couldn't open the directory");
+        break;
 
-        // case WRITEF:
-        // break; 
+        case READF:
+            memset(temp_buffer, 0, BUFF_SIZE);
+            memset(file_path, 0, BUFF_SIZE);
+            strcpy(file_path, foldername);
+            strcat(file_path, "/");
+            strcat(file_path, splitted_command[1]);
+            
+            int line_num = atoi(splitted_command[2]);//if null check
+            printf("line number: %d", line_num);
+            if(line_num > 0){
+                //file lock in reading 
+                readFHelper(file_path, -1, temp_buffer);
+                memset(resp.command, 0, BUFF_SIZE);
+                strcpy(resp.command, temp_buffer);
+                write(clientWriteFd, &resp, sizeof(struct response));
+            }
+            // else
+            // {
+
+            // }
+            
+
+
+        break;
+
+        case WRITET:
+            memset(temp_buffer, 0, BUFF_SIZE);
+            memset(file_path, 0, BUFF_SIZE);
+            strcpy(file_path, foldername);
+            strcat(file_path, "/");
+            strcat(file_path, splitted_command[1]);
+            if(size == 3){
+                // file lock in writing
+                writeTHelper(file_path, -1, splitted_command[2],temp_buffer);
+                memset(resp.command, 0, BUFF_SIZE);
+                strcpy(resp.command, temp_buffer);
+                write(clientWriteFd, &resp, sizeof(struct response));
+            }
+        break; 
 
         // case UPLOAD:
         // break;
@@ -140,6 +292,7 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
         break;
     }
 }
+
 enum command_level checkCommand(char* command, int size)
 {
     if(strcmp(command, "help") == 0)
@@ -158,16 +311,16 @@ enum command_level checkCommand(char* command, int size)
 
     if(strcmp(command, "readF") == 0)
     {
-        if(size != 3)
-            return INVALID_COMMAND;
-        return READF;
+        if(size == 3 || size == 2)
+            return READF;
+        return INVALID_COMMAND;
     }   
 
-    if(strcmp(command, "writeF") == 0)
+    if(strcmp(command, "writeT") == 0)
     {
-        if(size != 4)
-            return INVALID_COMMAND;
-        return WRITEF;
+        if(size == 3 || size == 4)
+            return WRITET;
+        return INVALID_COMMAND;
     }   
     if(strcmp(command, "upload") == 0)
     {
@@ -410,6 +563,7 @@ int main(int argc, char **argv){
                     int clientReadFd = open(clientFifo, O_RDONLY);
                     int clientWriteFd  = open(clientFifo, O_WRONLY);
                     char buffChld[BUFF_SIZE];
+                    char doNotUse[MAX_ARGUMENT][BUFF_SIZE];
                     // int numBytesWrittenLogChld = snprintf(buffChld,BUFF_SIZE,">>Clint fifo started\n");
                     // write(STDOUT_FILENO, buffChld, numBytesWrittenLogChld);
                     // memset(buffChld, 0, numBytesWrittenLogChld);
@@ -435,7 +589,8 @@ int main(int argc, char **argv){
                             write(clientWriteFd, &resp, sizeof(struct response));
                         }
                         else{
-                            send_response(splitted_command,clientWriteFd, lev);
+                            int sizeOfCommand = splitStringIntoArray_S(resp.command, ' ', splitted_command);
+                            send_response(splitted_command,clientWriteFd, lev, argv[1],sizeOfCommand);
                         }
                         
                         write(STDOUT_FILENO, resp.command, BUFF_SIZE);

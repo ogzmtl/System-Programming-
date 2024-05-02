@@ -37,7 +37,7 @@ enum command_level {
     HELP, 
     LIST,
     READF,
-    WRITEF, 
+    WRITET, 
     UPLOAD,
     DOWNLOAD, 
     ARCHIVE,
@@ -49,5 +49,6 @@ int writeToLog(const char* log);
 int countHowManyElementsWillExtract(const char *str, const char delim);
 int splitStringIntoArray_I(const char* str, const char delim, char(*splitted)[BUFF_SIZE], int count);
 int splitStringIntoArray_S(const char* str, const char delim, char(*splitted)[BUFF_SIZE]);
+off_t get_file_size(const char *file_path);
 
 #endif /* __OGUZ_COMMON_H__ */

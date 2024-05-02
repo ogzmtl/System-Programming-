@@ -88,3 +88,12 @@ int countHowManyElementsWillExtract(const char *str, const char delim){
     }
     return count+1;
 }
+
+off_t get_file_size(const char *file_path) {
+    struct stat st;
+    if (stat(file_path, &st) == -1) {
+        perror("Error getting file size");
+        exit(EXIT_FAILURE);
+    }
+    return st.st_size;
+}
