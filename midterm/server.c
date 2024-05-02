@@ -1,6 +1,229 @@
 #include "common.h"
 #include <semaphore.h>
+#include <signal.h>
+//cocuklara kill sinyali gonder arrayde pid
+//clientlara kill sinyali gonder arrayde pid 
+long int clients[MAX_CLIENT];
+long int child[MAX_CHILD];
 
+
+void handler(int sig)
+{
+
+    if(sig == SIGINT)
+    {
+        char semaphore_one[BUFF_SIZE];
+        char semaphore_two[BUFF_SIZE];
+
+        // snprintf(semaphore_one, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)getpid());
+        // snprintf(semaphore_two, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
+
+        unlink(SERVER_FIFO);
+        // sem_close(semaphore_one);
+        // sem_close(semaphore_two);
+        // sem_unlink(semaphore_one);//error check -1 on error
+        // sem_unlink(semaphore_two);
+        //unlink fifos
+        for(int i = 0; i < 1; i++){
+            kill(clients[i], SIGINT);
+            kill(child[i], SIGKILL);
+        }
+    }
+    exit(0);
+}
+int helpHelper(char* secCommand, char* hbuff)
+{
+    int numBytesWrittenForHelp = 0;
+    if(strcmp(secCommand, "readF") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "readF <file> <line #>\n\tdisplay the #th line of the <file>, returns with an error if <file> does not exists");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "help") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "help\n\tdisplay the list of possible client requests");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "list") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "list\n\t sends a request to display the list of files in Servers directory\n\t(also displays the list received from the Server)");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "writeT") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "writeT <file> <line #> <string>\n\trequest to write the content of “string” to the #th line the <file>, if the line # is not given \
+writes to the end of file. If the file does not exists in Servers directory creates and edits the \
+file at the same time");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "upload") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "upload <file>\n\tuploads the file from the current working directory of client to the Servers directory");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "download") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "download <file>\n\trequest to receive <file> from Servers directory to client side");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "archServer") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "archServer <fileName>.tar\n\tUsing fork, exec and tar utilities create a child process that will collect all the files currently available on the the Server side and store them in the <filename>.tar archive");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "killServer") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "killServer\n\tSends a kill request to the Server");
+        return numBytesWrittenForHelp;
+    }
+    else if(strcmp(secCommand, "quit") == 0)
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "quit\n\tSend write request to Server side log file and quits");
+        return numBytesWrittenForHelp;
+    }
+    else
+    {
+        numBytesWrittenForHelp = snprintf(hbuff, BUFF_SIZE, "Invalid command entered by user");
+        return numBytesWrittenForHelp;
+    }
+}
+
+void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum command_level com)
+{
+    int numBytesWrittenToFd = 0;
+    struct response resp;
+    char copiedBuff[BUFF_SIZE];
+    switch(com)
+    {
+        case HELP:
+            if(splitted_command[1][0] == '\0')
+            {
+                numBytesWrittenToFd = snprintf(copiedBuff,BUFF_SIZE, "Available comments are :\nhelp, list, readF, writeT, upload, download, archServer,quit, killServer\n");
+                strcpy(resp.command, copiedBuff);
+                resp.command[numBytesWrittenToFd] = '\0';
+                write(clientWriteFd, &resp, sizeof(struct response));
+            }
+            else
+            {
+                numBytesWrittenToFd = helpHelper(splitted_command[1], copiedBuff);
+                strcpy(resp.command, copiedBuff);
+                resp.command[numBytesWrittenToFd] = '\0';
+                write(clientWriteFd, &resp, sizeof(struct response));
+            }
+        break; 
+
+        // case LIST: 
+        // break;
+
+        // case READF:
+        // break;
+
+        // case WRITEF:
+        // break; 
+
+        // case UPLOAD:
+        // break;
+
+        // case DOWNLOAD:
+        // break; 
+
+        // case ARCHIVE:
+        // break;
+
+        // case KILL:
+        // break;
+
+        // case QUIT:
+        // break;
+
+        default:
+        break;
+    }
+}
+enum command_level checkCommand(char* command, int size)
+{
+    if(strcmp(command, "help") == 0)
+    {
+        if(size == 1 || size == 2)
+            return HELP;
+        return INVALID_COMMAND;
+    }   
+
+    if(strcmp(command, "list") == 0)
+    {
+        if(size != 1)
+            return INVALID_COMMAND;
+        return LIST;
+    }   
+
+    if(strcmp(command, "readF") == 0)
+    {
+        if(size != 3)
+            return INVALID_COMMAND;
+        return READF;
+    }   
+
+    if(strcmp(command, "writeF") == 0)
+    {
+        if(size != 4)
+            return INVALID_COMMAND;
+        return WRITEF;
+    }   
+    if(strcmp(command, "upload") == 0)
+    {
+        if(size != 2)
+            return INVALID_COMMAND;
+        return UPLOAD;
+    }   
+    if(strcmp(command, "download") == 0)
+    {
+        if(size != 2)
+            return INVALID_COMMAND;
+        return DOWNLOAD;
+    }
+    if(strcmp(command, "arcServer") == 0)
+    {
+        if(size != 2)
+            return INVALID_COMMAND;
+        return ARCHIVE;
+    }
+    if(strcmp(command, "killServer") == 0)
+    {
+        if(size != 1)
+            return INVALID_COMMAND;
+        return KILL;
+    }
+    if(strcmp(command, "quit") == 0)
+    {
+        if(size != 1)
+            return INVALID_COMMAND;
+        return QUIT;
+    }
+    
+}
+
+enum command_level handle_client_request(const char* command, char(*splitted_command)[BUFF_SIZE]){
+    int log_bytes = 0;
+    char log_function[BUFF_SIZE];
+    char response_buffer[BUFF_SIZE];
+    // char splitted_command[MAX_ARGUMENT][BUFF_SIZE];
+    enum command_level lev; 
+
+    int size = splitStringIntoArray_S(command, ' ', splitted_command);
+    if(size == -1)
+    {
+        //write_to_log
+        return INVALID_COMMAND;
+    }
+    return checkCommand(splitted_command[0], size);
+
+    
+    // for(int i = 0; i < size; i++){
+    //     printf("splitted command : %s\n", splitted_command[i]);
+    // }
+
+
+}
 
 int main(int argc, char **argv){
 
@@ -12,10 +235,19 @@ int main(int argc, char **argv){
     struct stat st;
     struct request req;
     struct response resp;
-    char clientSem[256];
+    char clientSem[CLIENT_SEM_NAME_LEN];
     sem_t *sem_temp;
-    char clientSem2[256];
+    char clientSem2[CLIENT_SEM_NAME_LEN];
     sem_t *sem_temp2;
+    int fork_count=0;
+    struct sigaction new, old;
+    new.sa_handler = handler;
+    sigemptyset(&new.sa_mask);
+    new.sa_flags = 0;
+    if(sigaction (SIGINT, &new, NULL) == -1){
+        perror("sigaction");
+        return ERR;
+    };
 
     //log dosyasina bak hata oldugunda open hatasi aliyorsun
     if(argc != 3){
@@ -71,8 +303,11 @@ int main(int argc, char **argv){
             return ERR;
         }
     }
-    if(mkfifo(SERVER_FIFO,0666) == -1 && errno == EEXIST)
+    if(mkfifo(SERVER_FIFO,0666) == -1)
     {
+        if(errno == EEXIST){
+            unlink(SERVER_FIFO);
+        }
         numBytesWrittenLog = sprintf(log, "mkfifo %s\n", SERVER_FIFO);
         if(write(STDOUT_FILENO, log, numBytesWrittenLog) == -1){
             perror("write syscall error\n");
@@ -80,8 +315,9 @@ int main(int argc, char **argv){
             return ERR;
         }
         memset(log, 0, sizeof(numBytesWrittenLog));
-        unlink(SERVER_FIFO);
+        // unlink(SERVER_FIFO);
         perror("mkfifo error");
+        return ERR;
     }
 
     pid = getpid(); // according to the man page: These functions are always successful.
@@ -110,29 +346,30 @@ int main(int argc, char **argv){
     dummyFd = open(SERVER_FIFO, O_WRONLY);
     if (dummyFd == -1){
         perror("open\n");
+        if(unlink(SERVER_FIFO) == -1){
+            perror("unlink");
+        } 
+        return ERR;
     }
     for(;;)
     {
         if(read(serverFd, &req, sizeof(struct request)) != sizeof(struct request)){
             perror("read \n");
+            unlink(SERVER_FIFO);
             return ERR;
         }
         if(req.serverPid != pid)
         {
-            numBytesWrittenLog = snprintf(log, BUFF_SIZE, "Wrong server pid %d\n", req.serverPid);
+            numBytesWrittenLog = snprintf(log, BUFF_SIZE, "Wrong server pid %ld\n", req.serverPid);
             write(STDOUT_FILENO, log, numBytesWrittenLog);
             memset(log, 0, numBytesWrittenLog);
             //return error to given client fifo
         }
         if(clientCounter < numClients)
         {
-            snprintf(clientSem, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)req.pid);
-            sem_temp = sem_open(clientSem, 0);
-
-            snprintf(clientSem2, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)req.pid);
-            sem_temp2 = sem_open(clientSem2, 0);
+            clients[clientCounter]= req.pid;
             clientCounter++;
-            numBytesWrittenLog = snprintf(buffer,BUFF_SIZE,">>Client PID %d connected as client%2d \n", req.pid,clientCounter);
+            numBytesWrittenLog = snprintf(buffer,BUFF_SIZE,">>Client PID %ld connected as client%2d \n", req.pid,clientCounter);
             write(STDOUT_FILENO, buffer, numBytesWrittenLog);
             memset(buffer, 0, numBytesWrittenLog);
 
@@ -148,52 +385,101 @@ int main(int argc, char **argv){
                         perror("close");
                         exit(EXIT_FAILURE);
                     }
+                    char splitted_command[MAX_ARGUMENT][BUFF_SIZE];
+                    enum command_level lev;
+                    snprintf(clientSem, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)req.pid);
+                    sem_temp = sem_open(clientSem, 0);
+                    if(sem_temp == SEM_FAILED){
+                        perror("sem_open error\n");
+                    }
+                    snprintf(clientSem2, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)req.pid);
+                    sem_temp2 = sem_open(clientSem2,0);
+
+                    if(sem_temp2 == SEM_FAILED){
+                        perror("sem_open error\n");
+                    }
 
                     char logChild[BUFF_SIZE];
                     int childBufferWritten = 0;
                     snprintf(clientFifo, CLIENT_FIFO_NAME_LEN,CLIENT_FIFO,(long) req.pid);
+
+                    // int numBytesWrittenLogChld = snprintf(logChild, BUFF_SIZE, "client fifo name is %s\n",clientFifo);
+                    // write(STDOUT_FILENO, logChild,numBytesWrittenLogChld);
+                    // memset(logChild, 0, numBytesWrittenLogChld);
+
                     int clientReadFd = open(clientFifo, O_RDONLY);
                     int clientWriteFd  = open(clientFifo, O_WRONLY);
-
-                    // for(;;)
-                    // {
+                    char buffChld[BUFF_SIZE];
+                    // int numBytesWrittenLogChld = snprintf(buffChld,BUFF_SIZE,">>Clint fifo started\n");
+                    // write(STDOUT_FILENO, buffChld, numBytesWrittenLogChld);
+                    // memset(buffChld, 0, numBytesWrittenLogChld);
+                    for(;;)
+                    {
+                        memset(logChild, 0, BUFF_SIZE);
+                        sem_wait(sem_temp);
+                        // numBytesWrittenLogChld = snprintf(buffChld,BUFF_SIZE,">>Clint2 fifo started\n");
+                        // write(STDOUT_FILENO, buffChld, numBytesWrittenLogChld);
+                        // memset(buffChld, 0, numBytesWrittenLogChld);
                         if(read(clientReadFd, &resp, sizeof(struct response)) != sizeof(struct response))
                         {
                             perror("read");
                             continue;
                         }
-                        childBufferWritten = snprintf(logChild, BUFF_SIZE, "Hello from server child response :\n");
-                        logChild[childBufferWritten] = '\0';
-                        write(STDOUT_FILENO, logChild, childBufferWritten);
-                        fflush(stdout);
+
+                        lev = handle_client_request(resp.command,splitted_command);
+                        if( lev == INVALID_COMMAND){
+                            childBufferWritten = snprintf(logChild, BUFF_SIZE, "Invalid command number entered : %s\n", resp.command);
+                            memset(resp.command,0, BUFF_SIZE);
+                            strcpy(resp.command, logChild);
+                            resp.command[childBufferWritten] = '\0';
+                            write(clientWriteFd, &resp, sizeof(struct response));
+                        }
+                        else{
+                            send_response(splitted_command,clientWriteFd, lev);
+                        }
+                        
                         write(STDOUT_FILENO, resp.command, BUFF_SIZE);
-                        strcpy(resp.command, logChild);
-                        sem_post(sem_temp);
-                        write(clientWriteFd, &resp, sizeof(struct response));
-                        sem_wait(sem_temp2);
+                        // strcpy(resp.command, logChild);
+                        // resp.command[childBufferWritten] = '\0';
+                        // memset(logChild, 0, BUFF_SIZE);
+                        // sem_wait(sem_temp2);
+                        // write(clientWriteFd, &resp, sizeof(struct response));
+                        sem_post(sem_temp2);
+                        for(int i = 0; i < MAX_ARGUMENT; i++){
+                            memset(splitted_command[i], 0, BUFF_SIZE);
+                        }
+                    
                     // }
-                    if(close(clientReadFd) == -1){
-                        perror("close");
-                        exit(EXIT_FAILURE);
-                    }
+                        // if(close(clientReadFd) == -1){
+                        //     perror("close");
+                        //     exit(EXIT_FAILURE);
+                        // }
                     // if(close(clientWriteFd) == -1){
                     //     perror("close");
                     //     exit(EXIT_FAILURE);
-                    // }
-                    unlink(clientFifo);
-                    exit(EXIT_SUCCESS);
+                    }
+                    // unlink(clientFifo);
+                    // exit(EXIT_SUCCESS);
 
                 break; 
 
 
                 case -1:
                     perror("fork");
+                    unlink(SERVER_FIFO);
+                    close(serverFd);
+                    close(dummyFd);
                 break;
 
                 default: 
+                    child[fork_count++] = pid;
+                    // clients[clientCounter-1] = req.pid;
                 break;
             }
         }
+        // else{
+            //return invalid pid
+        // }
         
     }
     unlink(clientFifo);

@@ -1,18 +1,48 @@
 #include "common.h"
 #include <semaphore.h>
+#include <signal.h>
 static char clientFifo[CLIENT_FIFO_NAME_LEN];
+
+void handler(int sig)
+{
+    char semaphore_one[BUFF_SIZE];
+    char semaphore_two[BUFF_SIZE];
+
+    snprintf(semaphore_one, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)getpid());
+    snprintf(semaphore_two, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
+
+    if(sig == SIGINT)
+    {
+        unlink(clientFifo);
+        // sem_close(semaphore_one);
+        // sem_close(semaphore_two);
+        sem_unlink(semaphore_one);//error check -1 on error
+        sem_unlink(semaphore_two);
+        //unlink fifos
+        //
+    }
+    exit(0);
+}
 int main(int argc, char **argv){
 
     char log[BUFF_SIZE];
     char buffer[BUFF_SIZE];
-    int numBytesWrittenLog, numBytesReadFifo,numBytesWriteFifo;
+    int numBytesWrittenLog, numBytesReadFifo,numBytesWriteFifo,numBytesReadStdin;
     int clientFdW,clientFdR, clientPid, serverPid, serverFd;
     struct response resp;
     struct request req;
-    char clientSem[256];
+    char clientSem[CLIENT_SEM_NAME_LEN];
     sem_t *sem_temp;
-    char clientSem2[256];
+    char clientSem2[CLIENT_SEM_NAME_LEN];
     sem_t *sem_temp2;
+    struct sigaction new, old;
+    new.sa_handler = handler;
+    sigemptyset(&new.sa_mask);
+    new.sa_flags = 0;
+    if(sigaction (SIGINT, &new, NULL) == -1){
+        perror("sigaction");
+        return ERR;
+    };
 
     if(argc != 3){
         numBytesWrittenLog = sprintf(log, "Invalid size of argument(s) %d\nExample command : ./neHosClient <connect/tryConnect> serverPID\nExiting...\n", argc);
@@ -46,10 +76,10 @@ int main(int argc, char **argv){
     serverFd = open(SERVER_FIFO, O_WRONLY);
     if(serverFd == -1){
         numBytesWrittenLog = snprintf(log,BUFF_SIZE, ">> Server fifo open failed...\n");
-        // if(write(STDOUT_FILENO, log, numBytesWrittenLog) == -1){
-        //     perror("write error\n");
-        //     return ERR;
-        // }
+        if(write(STDOUT_FILENO, log, numBytesWrittenLog) == -1){
+            perror("write error\n");
+            return ERR;
+        }
         perror("open");
         memset(log, 0, BUFF_SIZE);
         return ERR;
@@ -67,15 +97,40 @@ int main(int argc, char **argv){
     
     req.pid = clientPid;
     req.serverPid = serverPid;
+    memset(clientSem, 0, CLIENT_SEM_NAME_LEN);
+    memset(clientSem2, 0, CLIENT_SEM_NAME_LEN);
+    snprintf(clientSem, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)getpid());
+    sem_temp = sem_open(clientSem, O_CREAT, 0666, 0);
+    if(sem_temp == SEM_FAILED){
+        perror("sem_open error\n");
+        sem_unlink(clientSem);
+    }
+
+    snprintf(clientSem2, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
+    sem_temp2 = sem_open(clientSem2, O_CREAT, 0666, 0);
+    if(sem_temp2 == SEM_FAILED){
+        perror("sem_open error\n");
+        sem_unlink(clientSem2);
+    }
+    // char logChild[BUFF_SIZE];
+    // int numBytesWrittenLogChld = snprintf(logChild, BUFF_SIZE, "client fifo name is %s\n",clientFifo);
+    // write(STDOUT_FILENO, logChild,numBytesWrittenLogChld);
+    // memset(logChild, 0, numBytesWrittenLogChld);
 
     if(write(serverFd, &req, sizeof(struct request)) != sizeof(struct request)){
         perror("write");
+        close(serverFd);
+        unlink(clientFifo);
+        //semaphore close
         return ERR;
     }
 
     if(close(serverFd) == -1){
         //write_to_log
         perror("close");
+        close(serverFd);
+        unlink(clientFifo);
+         //semaphore close
         return ERR;
     }
 
@@ -83,48 +138,65 @@ int main(int argc, char **argv){
     if(clientFdW == -1){
         //write_to_log
         perror("open");
+        close(serverFd);
+        unlink(clientFifo);
+         //semaphore close
         return ERR;
     }
     clientFdR = open(clientFifo, O_RDONLY);
     if(clientFdR == -1){
         //write_to_log
         perror("open");
+        close(serverFd);
+        unlink(clientFifo);
+         //semaphore close
         return ERR;
     }
-    snprintf(clientSem, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)getpid());
-    sem_temp = sem_open(clientSem, 0);
-
-    snprintf(clientSem2, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
-    sem_temp2 = sem_open(clientSem2, 0);
-    // for(;;)
-    // {
+    for(;;)
+    {
         memset(buffer, 0, BUFF_SIZE);
-        // snprintf(buffer, BUFF_SIZE, ">>Enter command : ");
-        // write(STDOUT_FILENO, buffer, BUFF_SIZE);
-        // memset(buffer, 0, BUFF_SIZE);
-        // read(STDIN_FILENO, buffer, BUFF_SIZE);
-        // write(STDOUT_FILENO, buffer, BUFF_SIZE);
-        fprintf(stdout, "Enter Command:\n");
-        fgets(resp.command,BUFF_SIZE,stdin);
-        resp.command[strlen(resp.command)] = '\0';
+        memset(resp.command, 0, BUFF_SIZE);
+        numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">>Enter command : ");
+        write(STDOUT_FILENO, buffer, numBytesReadStdin);
+        memset(buffer, 0, BUFF_SIZE);
+        numBytesReadStdin = read(STDIN_FILENO, &buffer, BUFF_SIZE);
+        buffer[numBytesReadStdin] = '\0';
+        // resp.command[strlen(resp.command)] = '\0';
+
+        // fprintf(stdout, "Enter Command:\n");
+        // fgets(buffer,BUFF_SIZE,stdin);
+        // resp.command[strlen(resp.command)] = '\0';
+        // strcpy(resp.command, buffer);
+                // memset(resp.command, 0, BUFF_SIZE);
+        strcpy(resp.command, buffer);
+        resp.command[strlen(resp.command)-1]= '\0';
+        // numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">>Enter command2 : %s \n",resp.command);
+        // write(STDOUT_FILENO, buffer, numBytesReadStdin);
+        
         if (write(clientFdW, &resp, sizeof(struct response)) != sizeof(struct response)){
             perror("write");
             //may be you can send invalid response signal to server
-            // continue;
+            continue;
         }
-        
-        sem_wait(sem_temp);
+        // memset(resp.command, 0, BUFF_SIZE);
+        // sem_wait(sem_temp);
+        // numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">>Enter command3 : ");
+        // write(STDOUT_FILENO, buffer, numBytesReadStdin);
+        // memset(buffer, 0, BUFF_SIZE);
+        sem_post(sem_temp);
+        // numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">>Enter command4 : ");
+        // write(STDOUT_FILENO, buffer, numBytesReadStdin);
+        // memset(buffer, 0, BUFF_SIZE);
+        sem_wait(sem_temp2);
+        // sem_post(sem_temp2);
         if (read(clientFdR, &resp, sizeof(struct response)) != sizeof(struct response)){
             perror("read");
             //may be you can send invalid response signal to server
-            // continue;
+            continue;
         }
-        sem_post(sem_temp2);
-
+        resp.command[strlen(resp.command)] = '\0';
         fprintf(stdout, "%s\n", resp.command);
-
-        
-    // }
+    }
 
 
     
