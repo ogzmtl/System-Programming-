@@ -2,18 +2,67 @@
 #include <semaphore.h>
 #include <signal.h>
 #include <dirent.h>
+#include <sys/wait.h>
 //cocuklara kill sinyali gonder arrayde pid
 //clientlara kill sinyali gonder arrayde pid 
 long int clients[MAX_CLIENT];
 long int child[MAX_CHILD];
+sem_t *queue;
+int clientCounter =0;
 
+int find_process_and_kill(int clpid)
+{
+    if(clpid != -1)
+    {
+        for(int i = 0; i < MAX_CLIENT; i++)
+        {
+            if(clients[i] == clpid)
+            {
+                clients[i] = -1;
+                return 1;
+            }
+        }
+        return -1;
+    }
+    return -1;
+}
+int kill_fork(int clpid)
+{
+    if(clpid != -1)
+    {
+        for(int i = 0; i < MAX_CLIENT; i++)
+        {
+            if(child[i] == clpid)
+            {
+                clients[i] = -1;
+                return 1;
+            }
+        }
+        return -1;
+    }
+    return -1;
+}
 void handler(int sig)
 {
-
-    if(sig == SIGINT)
+    int status;
+    if(sig == SIGCHLD)
     {
-        char semaphore_one[BUFF_SIZE];
-        char semaphore_two[BUFF_SIZE];
+        pid_t child_pid = waitpid(-1, &status, 0);
+        if(find_process_and_kill(child_pid) != 1)
+        {
+            kill_fork(child_pid);
+        }
+        else
+        {
+            clientCounter--;
+            sem_post(queue);
+        }
+    }
+
+    if(sig == SIGINT || sig == SIGTERM || sig == SIGKILL)
+    {
+        // char semaphore_one[BUFF_SIZE];
+        // char semaphore_two[BUFF_SIZE];
 
         // snprintf(semaphore_one, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)getpid());
         // snprintf(semaphore_two, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
@@ -24,13 +73,119 @@ void handler(int sig)
         // sem_unlink(semaphore_one);//error check -1 on error
         // sem_unlink(semaphore_two);
         //unlink fifos
-        for(int i = 0; i < 1; i++){
+
+        for(int i = 0; i < 1; i++)
+        {
             kill(clients[i], SIGINT);
             kill(child[i], SIGKILL);
         }
     }
     exit(0);
 }
+
+void find_proper_location(int clpid)
+{
+        for(int i = 0; i < MAX_CLIENT; i++)
+        {
+            if(clients[i] == -1)
+            {
+                clients[i] = clpid;
+            }
+        }
+}
+void createTempAndDelete(int srcFd, int dstFd, int n)
+{
+    int nth_line_offset = 0;
+    char c;
+    int offset = 0;
+    char buf[BUFF_SIZE];
+    int bytes_read;
+    int newline_count = 0;
+    // int i = 0;
+    while ((bytes_read = read(srcFd, &c, 1)) > 0) {
+        // for (int i = 0; i < bytes_read; i++) {
+        
+        if (c == '\n') {
+            newline_count++;
+            if (newline_count == n - 1) {
+                printf("offset: %d\n", offset);
+                nth_line_offset = offset + 1;
+                break;
+            }
+        }
+        // }
+        if (newline_count == n - 1) {
+            break;
+        }
+        offset++;
+    }
+
+    if (lseek(srcFd, nth_line_offset, SEEK_SET) == -1) {
+        perror("Error seeking to (n-1)th line");
+        exit(1);
+    }
+
+    while ((bytes_read = read(srcFd, buf, BUFF_SIZE)) > 0) {
+        if (write(dstFd, buf, bytes_read) == -1) {
+            perror("Error writing to destination file");
+            exit(1);
+        }
+    }
+
+    if (ftruncate(srcFd, nth_line_offset+bytes_read) == -1) {
+        perror("Error truncating source file");
+        exit(1);
+    }
+}
+
+void appendToFile(int srcFd, char* string)
+{
+    if (lseek(srcFd, 0, SEEK_END) == -1) {
+        perror("Error seeking to end of file");
+        exit(1);
+    }
+
+    int bytes_written = write(srcFd, string, strlen(string));
+    if (bytes_written == -1) {
+        perror("Error writing to file");
+        exit(1);
+    }
+
+    if (bytes_written != (int) strlen(string)) {
+        // fprintf(stderr, "Error: Incomplete write to file\n");
+        exit(1);
+    }
+}
+
+void copyTempAndDelete(int srcFd, int dstFd)
+{
+    char buffer[BUFF_SIZE];
+    ssize_t bytes_read;
+
+    if (lseek(srcFd, 0, SEEK_END) == -1) {
+        perror("Error seeking to end of source file");
+        exit(1);
+    }
+
+    if (lseek(dstFd, 0, SEEK_SET) == -1) {
+        perror("Error seeking to beginning of destination file");
+        exit(1);
+    }
+
+    while ((bytes_read = read(dstFd, buffer, BUFF_SIZE)) > 0) {//buff_Size bir yapabilirsin
+        if (write(srcFd, buffer, bytes_read) != bytes_read) {
+            perror("Error writing to source file");
+            exit(1);
+        }
+    }
+
+    if (bytes_read == -1) {
+        perror("Error reading from destination file");
+        exit(1);
+    }
+
+}
+
 int helpHelper(char* secCommand, char* hbuff)
 {
     int numBytesWrittenForHelp = 0;
@@ -99,7 +254,6 @@ void readFHelper(char* filename, int lineNum, char* line)
 
         // char line[BUFF_SIZE];
         char c; 
-        size_t len = 0;
         ssize_t read_bytes;
         int line_number = 1;
         int counter = 0;
@@ -128,6 +282,7 @@ void readFHelper(char* filename, int lineNum, char* line)
         close(fd);
         // return "Line not found.";
 }
+
 int addLastLineWithZero(char* filename, int string_len, char* string)
 {
     int fd;
@@ -143,10 +298,47 @@ int addLastLineWithZero(char* filename, int string_len, char* string)
     close(fd);
     return 1;
 }
+
+void writeTMiddle(char *filename, int lineNum, char *string){
+
+    // char c; 
+    // ssize_t read_bytes;
+    char tempFile[32] = "temp";
+    // char line[BUFF_SIZE];
+
+    int tmpFd= open(tempFile, O_RDWR| O_CREAT| O_TRUNC, 0666);
+    if(tmpFd == -1){
+        perror("open1");
+        return;
+    }
+    int fd = open(filename, O_RDWR|O_APPEND|O_CREAT, 0666);
+    if(fd == -1)
+    {
+        perror("open2");
+        return ;
+    }
+    createTempAndDelete(fd, tmpFd, lineNum);
+    appendToFile(fd, string);
+    copyTempAndDelete(fd, tmpFd);
+
+    if(close(fd) == -1){
+        perror("close");
+        return;
+    }
+    if(close(tmpFd) == -1){
+        perror("close");
+        return;
+    }
+    if (unlink("temp") == -1) {
+        perror("Error removing destination file");
+        exit(1);
+    }
+}
+
 void writeTHelper(char* filename, int lineNum, char* string, char* buffR)
 {
     int fd; 
-    char temp_buffer[BUFF_SIZE];
+    // char temp_buffer[BUFF_SIZE];
     int string_len = snprintf(buffR, BUFF_SIZE, "%s\n", string);
     int numBystesWritten = 0;
     printf("buffr: %s\n", buffR);
@@ -168,7 +360,7 @@ void writeTHelper(char* filename, int lineNum, char* string, char* buffR)
     if(lineNum == -1)
     {
         memset(buffR,0,BUFF_SIZE);
-        fd = open(filename, O_WRONLY|O_APPEND);
+        fd = open(filename, O_WRONLY|O_APPEND|O_CREAT, 0666);
         if(fd == -1){
             perror("open");
             return ;
@@ -181,17 +373,25 @@ void writeTHelper(char* filename, int lineNum, char* string, char* buffR)
         numBystesWritten = snprintf(buffR, BUFF_SIZE, "String \"%s\" Added at the end of file \n", string);
         buffR[numBystesWritten] = '\0';
     }
+    else{
+        printf("burdayim\n");
+        writeTMiddle(filename, lineNum, string);
+        numBystesWritten = snprintf(buffR, BUFF_SIZE, "String \"%s\" Added at the %d line of file \n", string,lineNum);
+        buffR[numBystesWritten] = '\0';
+    }
 
 }
 
-void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum command_level com, char* foldername, int size)
+void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum command_level com, char* foldername, int size, pid_t clpid)
 {
     int numBytesWrittenToFd = 0;
     struct response resp;
     char copiedBuff[BUFF_SIZE];
     char temp_buffer[BUFF_SIZE];
     char file_path[256] ="";
-    char donotUser[MAX_ARGUMENT][BUFF_SIZE];
+    // char donotUser[MAX_ARGUMENT][BUFF_SIZE];
+    char up[BUFF_SIZE] = "upload ";
+    char down[BUFF_SIZE] = "download ";
     switch(com)
     {
         case HELP:
@@ -271,22 +471,55 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
                 strcpy(resp.command, temp_buffer);
                 write(clientWriteFd, &resp, sizeof(struct response));
             }
+            if(size == 4){
+                int ln = atoi(splitted_command[2]);
+                writeTHelper(file_path, ln, splitted_command[3], temp_buffer);
+                memset(resp.command, 0, BUFF_SIZE);
+                strcpy(resp.command, temp_buffer);
+                write(clientWriteFd, &resp, sizeof(struct response));
+            }
         break; 
 
-        // case UPLOAD:
-        // break;
+        case UPLOAD:
+            memset(temp_buffer, 0, BUFF_SIZE);
+            memset(file_path, 0, BUFF_SIZE);
+            strcpy(file_path, foldername);
+            strcat(file_path, "/");
+            strcat(file_path, splitted_command[1]);
+            strcat(up, file_path);
+            strcpy(resp.command, up);
+            write(clientWriteFd, &resp, sizeof(struct response));
+            
+        break;
 
-        // case DOWNLOAD:
-        // break; 
+        case DOWNLOAD:
+            memset(temp_buffer, 0, BUFF_SIZE);
+            memset(file_path, 0, BUFF_SIZE);
+            strcpy(file_path, foldername);
+            strcat(file_path, "/");
+            strcat(file_path, splitted_command[1]);
+            strcat(down, file_path);
+            strcpy(resp.command, down);
+            write(clientWriteFd, &resp, sizeof(struct response));
+        break; 
 
         // case ARCHIVE:
         // break;
 
-        // case KILL:
-        // break;
+        case KILL:
+            kill(getpid(), SIGKILL);
+        break;
 
-        // case QUIT:
-        // break;
+        case QUIT:
+            //write_to_log
+            if(find_process_and_kill(clpid) == 1)
+            {
+                clientCounter--;
+                kill(clpid, SIGTERM);
+                sem_post(queue);
+            }
+
+        break;
 
         default:
         break;
@@ -302,65 +535,68 @@ enum command_level checkCommand(char* command, int size)
         return INVALID_COMMAND;
     }   
 
-    if(strcmp(command, "list") == 0)
+    else if(strcmp(command, "list") == 0)
     {
         if(size != 1)
             return INVALID_COMMAND;
         return LIST;
     }   
 
-    if(strcmp(command, "readF") == 0)
+    else if(strcmp(command, "readF") == 0)
     {
         if(size == 3 || size == 2)
             return READF;
         return INVALID_COMMAND;
     }   
 
-    if(strcmp(command, "writeT") == 0)
+    else if(strcmp(command, "writeT") == 0)
     {
         if(size == 3 || size == 4)
             return WRITET;
         return INVALID_COMMAND;
     }   
-    if(strcmp(command, "upload") == 0)
+    else if(strcmp(command, "upload") == 0)
     {
         if(size != 2)
             return INVALID_COMMAND;
         return UPLOAD;
     }   
-    if(strcmp(command, "download") == 0)
+    else if(strcmp(command, "download") == 0)
     {
         if(size != 2)
             return INVALID_COMMAND;
         return DOWNLOAD;
     }
-    if(strcmp(command, "arcServer") == 0)
+    else if(strcmp(command, "arcServer") == 0)
     {
         if(size != 2)
             return INVALID_COMMAND;
         return ARCHIVE;
     }
-    if(strcmp(command, "killServer") == 0)
+    else if(strcmp(command, "killServer") == 0)
     {
         if(size != 1)
             return INVALID_COMMAND;
         return KILL;
     }
-    if(strcmp(command, "quit") == 0)
+    else if(strcmp(command, "quit") == 0)
     {
         if(size != 1)
             return INVALID_COMMAND;
         return QUIT;
     }
+    else{
+        return INVALID_COMMAND;
+    }
     
 }
 
 enum command_level handle_client_request(const char* command, char(*splitted_command)[BUFF_SIZE]){
-    int log_bytes = 0;
-    char log_function[BUFF_SIZE];
-    char response_buffer[BUFF_SIZE];
+    // int log_bytes = 0;
+    // char log_function[BUFF_SIZE];
+    // char response_buffer[BUFF_SIZE];
     // char splitted_command[MAX_ARGUMENT][BUFF_SIZE];
-    enum command_level lev; 
+    // enum command_level lev; 
 
     int size = splitStringIntoArray_S(command, ' ', splitted_command);
     if(size == -1)
@@ -383,8 +619,9 @@ int main(int argc, char **argv){
     char log[BUFF_SIZE];
     char buffer[BUFF_SIZE];
     char clientFifo[CLIENT_FIFO_NAME_LEN];
-    int numBytesWrittenLog, numBytesReadFifo;
-    int pid, serverFd, dummyFd, clientCounter=0; 
+    int numBytesWrittenLog;
+    int pid, serverFd, dummyFd; 
+    char filen[BUFF_SIZE];
     struct stat st;
     struct request req;
     struct response resp;
@@ -393,7 +630,7 @@ int main(int argc, char **argv){
     char clientSem2[CLIENT_SEM_NAME_LEN];
     sem_t *sem_temp2;
     int fork_count=0;
-    struct sigaction new, old;
+    struct sigaction new;
     new.sa_handler = handler;
     sigemptyset(&new.sa_mask);
     new.sa_flags = 0;
@@ -401,6 +638,7 @@ int main(int argc, char **argv){
         perror("sigaction");
         return ERR;
     };
+
 
     //log dosyasina bak hata oldugunda open hatasi aliyorsun
     if(argc != 3){
@@ -437,7 +675,15 @@ int main(int argc, char **argv){
         memset(log, 0, sizeof(numBytesWrittenLog));
         return ERR;
     }
-
+    for(int i = 0; i < MAX_CLIENT; i++)
+    {
+        clients[i] = -1;
+    }
+    queue = sem_open(QUEUE_SEM, O_CREAT, 0666, numClients);
+    if (queue == SEM_FAILED) {
+        perror("sem_open producer");
+        exit(1);
+    }
     if(stat(argv[1], &st) == -1)
     {
         if(mkdir(argv[1], 0770) == -1){
@@ -469,6 +715,22 @@ int main(int argc, char **argv){
         }
         memset(log, 0, sizeof(numBytesWrittenLog));
         // unlink(SERVER_FIFO);
+        perror("mkfifo error");
+        return ERR;
+    }
+    if(mkfifo(TEMP_DOWNLOAD_FIFO,0666) == -1)
+    {
+        if(errno == EEXIST){
+            unlink(SERVER_FIFO);
+            unlink(TEMP_DOWNLOAD_FIFO);
+        }
+        numBytesWrittenLog = sprintf(log, "mkfifo %s\n", SERVER_FIFO);
+        if(write(STDOUT_FILENO, log, numBytesWrittenLog) == -1){
+            perror("write syscall error\n");
+            memset(log, 0, sizeof(numBytesWrittenLog));
+            return ERR;
+        }
+        memset(log, 0, sizeof(numBytesWrittenLog));
         perror("mkfifo error");
         return ERR;
     }
@@ -518,9 +780,15 @@ int main(int argc, char **argv){
             memset(log, 0, numBytesWrittenLog);
             //return error to given client fifo
         }
-        if(clientCounter < numClients)
+        if(clientCounter > numClients && strcmp(req.connect,"tryConnect") == 0)
         {
-            clients[clientCounter]= req.pid;
+            kill(req.pid, SIGTERM);
+        }
+        else
+        {
+            sem_wait(queue);
+            find_proper_location(req.pid);
+            // clients[clientCounter]= req.pid;
             clientCounter++;
             numBytesWrittenLog = snprintf(buffer,BUFF_SIZE,">>Client PID %ld connected as client%2d \n", req.pid,clientCounter);
             write(STDOUT_FILENO, buffer, numBytesWrittenLog);
@@ -562,8 +830,8 @@ int main(int argc, char **argv){
 
                     int clientReadFd = open(clientFifo, O_RDONLY);
                     int clientWriteFd  = open(clientFifo, O_WRONLY);
-                    char buffChld[BUFF_SIZE];
-                    char doNotUse[MAX_ARGUMENT][BUFF_SIZE];
+                    // char buffChld[BUFF_SIZE];
+                    // char doNotUse[MAX_ARGUMENT][BUFF_SIZE];
                     // int numBytesWrittenLogChld = snprintf(buffChld,BUFF_SIZE,">>Clint fifo started\n");
                     // write(STDOUT_FILENO, buffChld, numBytesWrittenLogChld);
                     // memset(buffChld, 0, numBytesWrittenLogChld);
@@ -590,10 +858,46 @@ int main(int argc, char **argv){
                         }
                         else{
                             int sizeOfCommand = splitStringIntoArray_S(resp.command, ' ', splitted_command);
-                            send_response(splitted_command,clientWriteFd, lev, argv[1],sizeOfCommand);
+                            send_response(splitted_command,clientWriteFd, lev, argv[1],sizeOfCommand,req.pid);
+                            //bir tane daha fork gerekebilir mi ?
                         }
-                        
-                        write(STDOUT_FILENO, resp.command, BUFF_SIZE);
+
+                        if(strncmp(resp.command, "upload", 6) == 0){
+                            int lastpid = fork();
+                            if(lastpid == -1){
+                                perror("fork");
+                                exit(EXIT_FAILURE);
+                            }
+                            else if(lastpid == 0){
+                                close(clientWriteFd);
+                                close(clientReadFd);
+                                // sem_t *mutex, *full,*empty;
+                                strcpy(filen, argv[1]);
+                                strcat(filen, "/");
+                                strcat(filen, splitted_command[1]);
+ 
+                                consumerrr(filen);
+                                exit(EXIT_SUCCESS);
+                            }
+                        }
+                        else if(strncmp(resp.command, "download", 8) == 0)
+                        {
+                            int lastpid = fork();
+                            if(lastpid == -1){
+                                perror("fork");
+                                exit(EXIT_FAILURE);
+                            }
+                            else if(lastpid == 0){
+                                close(clientWriteFd);
+                                close(clientReadFd);
+                                strcpy(filen, argv[1]);
+                                strcat(filen, "/");
+                                strcat(filen, splitted_command[1]);
+                                printf("filen %s \n", filen);
+                                producerr(filen);
+                                exit(EXIT_SUCCESS);
+                            }
+                        }
                         // strcpy(resp.command, logChild);
                         // resp.command[childBufferWritten] = '\0';
                         // memset(logChild, 0, BUFF_SIZE);
@@ -603,7 +907,8 @@ int main(int argc, char **argv){
                         for(int i = 0; i < MAX_ARGUMENT; i++){
                             memset(splitted_command[i], 0, BUFF_SIZE);
                         }
-                    
+                        wait(NULL);
+
                     // }
                         // if(close(clientReadFd) == -1){
                         //     perror("close");
@@ -627,7 +932,7 @@ int main(int argc, char **argv){
                 break;
 
                 default: 
-                    child[fork_count++] = pid;
+                    child[fork_count++] = forkPid;
                     // clients[clientCounter-1] = req.pid;
                 break;
             }

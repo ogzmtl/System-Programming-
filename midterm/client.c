@@ -2,6 +2,8 @@
 #include <semaphore.h>
 #include <signal.h>
 static char clientFifo[CLIENT_FIFO_NAME_LEN];
+//consume-> download writeT, writeT uicin yeni bir temp olustur karsi tarafta fork
+//produce -> upload karsi tarafta fork 
 
 void handler(int sig)
 {
@@ -11,23 +13,23 @@ void handler(int sig)
     snprintf(semaphore_one, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)getpid());
     snprintf(semaphore_two, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
 
-    if(sig == SIGINT)
+    
+    if(sig == SIGINT || sig == SIGTERM)
     {
         unlink(clientFifo);
-        // sem_close(semaphore_one);
-        // sem_close(semaphore_two);
-        sem_unlink(semaphore_one);//error check -1 on error
+        sem_unlink(semaphore_one);
         sem_unlink(semaphore_two);
-        //unlink fifos
-        //
+
     }
-    exit(0);
+    printf("Handler %d you should use quit for proper termiantion\n");
+    // exit(EXIT_SUCCESS);
 }
 int main(int argc, char **argv){
 
     char log[BUFF_SIZE];
     char buffer[BUFF_SIZE];
-    int numBytesWrittenLog, numBytesReadFifo,numBytesWriteFifo,numBytesReadStdin;
+    char splitted_command[MAX_ARGUMENT][BUFF_SIZE];
+    int numBytesWrittenLog,numBytesReadStdin;
     int clientFdW,clientFdR, clientPid, serverPid, serverFd;
     struct response resp;
     struct request req;
@@ -35,7 +37,7 @@ int main(int argc, char **argv){
     sem_t *sem_temp;
     char clientSem2[CLIENT_SEM_NAME_LEN];
     sem_t *sem_temp2;
-    struct sigaction new, old;
+    struct sigaction new;
     new.sa_handler = handler;
     sigemptyset(&new.sa_mask);
     new.sa_flags = 0;
@@ -124,6 +126,11 @@ int main(int argc, char **argv){
         //semaphore close
         return ERR;
     }
+    sem_t* queue = sem_open(QUEUE_SEM, 0);
+    if (queue == SEM_FAILED) {
+        perror("sem_open producer");
+        exit(1);
+    }
 
     if(close(serverFd) == -1){
         //write_to_log
@@ -133,7 +140,10 @@ int main(int argc, char **argv){
          //semaphore close
         return ERR;
     }
-
+    sem_wait(queue);
+    numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">> Waiting for Que.. Connection Established ");
+    write(STDOUT_FILENO, buffer, numBytesReadStdin);
+    memset(buffer, 0, BUFF_SIZE);
     clientFdW = open(clientFifo, O_WRONLY);
     if(clientFdW == -1){
         //write_to_log
@@ -178,6 +188,7 @@ int main(int argc, char **argv){
             //may be you can send invalid response signal to server
             continue;
         }
+        splitStringIntoArray_S(resp.command, ' ', splitted_command);
         // memset(resp.command, 0, BUFF_SIZE);
         // sem_wait(sem_temp);
         // numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">>Enter command3 : ");
@@ -195,7 +206,18 @@ int main(int argc, char **argv){
             continue;
         }
         resp.command[strlen(resp.command)] = '\0';
+
         fprintf(stdout, "%s\n", resp.command);
+
+        if(strncmp(resp.command, "upload", 6) == 0 && strcmp(splitted_command[0], "help") != 0){
+            
+            producerr(splitted_command[1]);
+        }
+        else if(strncmp(resp.command, "download", 8)==0 && strcmp(splitted_command[0], "help") != 0)
+        {
+            consumerrr(splitted_command[1]);
+        }
+
     }
 
 

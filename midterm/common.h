@@ -9,6 +9,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <sys/mman.h>
+#include <semaphore.h>
+
 
 #define ERR -1
 #define SUCCESS 0
@@ -22,10 +25,19 @@
 #define CLIENT_SEM_TEMP "sem.%ld"
 #define CLIENT_SEM2_TEMP "sem2.%ld"
 #define CLIENT_SEM_NAME_LEN (sizeof(CLIENT_SEM_TEMP) + 20)
+#define SHM_NAME "/my_shared_mem"
+#define SEM_EMPTY_NAME "/producer_semaphorex"
+#define SEM_MUTEX_NAME "/consumer_semaphorex"
+#define SEM_FULL_NAME "/full_semaphorex"
+#define BUFFER_SIZE 1024*1024*20
+#define TEMP_DOWNLOAD_FIFO "/tmp/downfifo"
+#define QUEUE_SEM "/queue_sem"
+#define QUEUE_SEM_LEN (sizeof(CLIENT_SEM_TEMP) +1)
 
 struct request{
     long int pid;
     long int serverPid;
+    char connect[BUFF_SIZE];
 };
 
 struct response{
@@ -50,5 +62,8 @@ int countHowManyElementsWillExtract(const char *str, const char delim);
 int splitStringIntoArray_I(const char* str, const char delim, char(*splitted)[BUFF_SIZE], int count);
 int splitStringIntoArray_S(const char* str, const char delim, char(*splitted)[BUFF_SIZE]);
 off_t get_file_size(const char *file_path);
-
+void producer(const char *filename);
+void consumerr(const char *filename);
+void consumerrr(const char *filename);
+void producerr(const char *filename);
 #endif /* __OGUZ_COMMON_H__ */
