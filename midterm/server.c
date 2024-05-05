@@ -7,7 +7,7 @@
 //clientlara kill sinyali gonder arrayde pid 
 long int clients[MAX_CLIENT];
 long int child[MAX_CHILD];
-sem_t *queue;
+// sem_t *queue;
 int clientCounter =0;
 
 int find_process_and_kill(int clpid)
@@ -42,47 +42,60 @@ int kill_fork(int clpid)
     }
     return -1;
 }
-void handler(int sig)
+
+void sigchldhndlr(int sig)
 {
+    pid_t pid;
     int status;
-    if(sig == SIGCHLD)
-    {
-        pid_t child_pid = waitpid(-1, &status, 0);
-        if(find_process_and_kill(child_pid) != 1)
-        {
-            kill_fork(child_pid);
-        }
-        else
-        {
-            clientCounter--;
-            sem_post(queue);
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        
+        clientCounter--;
+        if (WIFEXITED(status)) {
+            if(find_process_and_kill(pid) != 1)
+            {
+                // clientCounter--;
+                kill_fork(pid);
+            }
+            else
+            {
+                clientCounter--;
+                // sem_post(queue);
+            }
+        } else if (WIFSIGNALED(status)) {
+            printf("Child process %d terminated by signal %d\n", pid, WTERMSIG(status));
         }
     }
+}
 
-    if(sig == SIGINT || sig == SIGTERM || sig == SIGKILL)
+void handler(int sig)
+{
+
+    if(sig == SIGINT || sig == SIGTERM)
     {
         // char semaphore_one[BUFF_SIZE];
         // char semaphore_two[BUFF_SIZE];
 
         // snprintf(semaphore_one, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)getpid());
         // snprintf(semaphore_two, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
-
         unlink(SERVER_FIFO);
-        // sem_close(semaphore_one);
-        // sem_close(semaphore_two);
+        unlink(TEMP_DOWNLOAD_FIFO);
+
         // sem_unlink(semaphore_one);//error check -1 on error
         // sem_unlink(semaphore_two);
-        //unlink fifos
-
-        for(int i = 0; i < 1; i++)
+        printf("Sigint handled terminated\n");
+        if(clientCounter > 0)
         {
-            kill(clients[i], SIGINT);
-            kill(child[i], SIGKILL);
+            for(int i = 0; i < MAX_CLIENT; i++)
+            {
+                if(clients[i] != -1 ) kill(clients[i], SIGTERM);
+                if(child[i] != -1 ) kill(child[i], SIGTERM);
+            }      
         }
-    }
-    exit(0);
-}
 
+    }
+    exit(EXIT_SUCCESS);
+}
 void find_proper_location(int clpid)
 {
         for(int i = 0; i < MAX_CLIENT; i++)
@@ -108,7 +121,7 @@ void createTempAndDelete(int srcFd, int dstFd, int n)
         if (c == '\n') {
             newline_count++;
             if (newline_count == n - 1) {
-                printf("offset: %d\n", offset);
+                // printf("offset: %d\n", offset);
                 nth_line_offset = offset + 1;
                 break;
             }
@@ -245,14 +258,17 @@ file at the same time");
 
 void readFHelper(char* filename, int lineNum, char* line)
 {
-        printf("filename: %s %d\n", filename, lineNum);
-        int fd = open(filename, O_RDONLY);
-        if (fd == -1) {
-            return;
-            // return "File could not opened.";
-        }
+    int fd = open(filename, O_RDONLY);
+    if (fd == -1) {
+        return;
+    }
 
-        // char line[BUFF_SIZE];
+    struct flock fl;
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_CUR;
+    fl.l_start = 0;
+    fl.l_len = 0;
+
         char c; 
         ssize_t read_bytes;
         int line_number = 1;
@@ -273,13 +289,17 @@ void readFHelper(char* filename, int lineNum, char* line)
                     memset(line,0, counter);
                     counter = 0;
                     line_number++;
-                    printf("%d\n", line_number);
                 }
             }
             read_bytes = read(fd, &c, 1);
         }
-
-        close(fd);
+    fl.l_type = F_UNLCK;
+    if (fcntl(fd, F_SETLK, &fl) == -1)
+    {
+        fprintf(stderr, "File open lock error\n");
+        return;
+    }
+    close(fd);
         // return "Line not found.";
 }
 
@@ -341,9 +361,7 @@ void writeTHelper(char* filename, int lineNum, char* string, char* buffR)
     // char temp_buffer[BUFF_SIZE];
     int string_len = snprintf(buffR, BUFF_SIZE, "%s\n", string);
     int numBystesWritten = 0;
-    printf("buffr: %s\n", buffR);
     //file doesn't exist
-    printf("xx : %d\n", string_len);
     string[string_len-1] = '\n';
     string[string_len]= '\0';
     // buffR[string_len] = '\0';
@@ -374,7 +392,6 @@ void writeTHelper(char* filename, int lineNum, char* string, char* buffR)
         buffR[numBystesWritten] = '\0';
     }
     else{
-        printf("burdayim\n");
         writeTMiddle(filename, lineNum, string);
         numBystesWritten = snprintf(buffR, BUFF_SIZE, "String \"%s\" Added at the %d line of file \n", string,lineNum);
         buffR[numBystesWritten] = '\0';
@@ -392,12 +409,15 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
     // char donotUser[MAX_ARGUMENT][BUFF_SIZE];
     char up[BUFF_SIZE] = "upload ";
     char down[BUFF_SIZE] = "download ";
+    char logg[BUFF_SIZE];
+    int logBytes;
     switch(com)
     {
         case HELP:
             if(splitted_command[1][0] == '\0')
             {
                 numBytesWrittenToFd = snprintf(copiedBuff,BUFF_SIZE, "Available comments are :\nhelp, list, readF, writeT, upload, download, archServer,quit, killServer\n");
+                writeToLog(copiedBuff);
                 strcpy(resp.command, copiedBuff);
                 resp.command[numBytesWrittenToFd] = '\0';
                 write(clientWriteFd, &resp, sizeof(struct response));
@@ -405,6 +425,7 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
             else
             {
                 numBytesWrittenToFd = helpHelper(splitted_command[1], copiedBuff);
+                writeToLog(copiedBuff);
                 strcpy(resp.command, copiedBuff);
                 resp.command[numBytesWrittenToFd] = '\0';
                 memset(copiedBuff, 0, sizeof(struct response));
@@ -425,7 +446,7 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
                     strcat(temp_file, "\n");
                 }
                 closedir (dp);
-
+                writeToLog(temp_file);
                 strcpy(resp.command, temp_file);
                 write(clientWriteFd, &resp, sizeof(struct response));
             }
@@ -436,24 +457,21 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
         case READF:
             memset(temp_buffer, 0, BUFF_SIZE);
             memset(file_path, 0, BUFF_SIZE);
+            memset(resp.command, 0, BUFF_SIZE);
             strcpy(file_path, foldername);
             strcat(file_path, "/");
             strcat(file_path, splitted_command[1]);
             
-            int line_num = atoi(splitted_command[2]);//if null check
-            printf("line number: %d", line_num);
+            int line_num = atoi(splitted_command[2]);
             if(line_num > 0){
                 //file lock in reading 
-                readFHelper(file_path, -1, temp_buffer);
-                memset(resp.command, 0, BUFF_SIZE);
+                readFHelper(file_path, line_num, temp_buffer);
+                int wr0 = snprintf(logg, BUFF_SIZE, ">> read %d line of file: %s\n", line_num, file_path);
+                writeToLog(logg);
+                memset(logg,0, wr0);
                 strcpy(resp.command, temp_buffer);
                 write(clientWriteFd, &resp, sizeof(struct response));
             }
-            // else
-            // {
-
-            // }
-            
 
 
         break;
@@ -467,6 +485,9 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
             if(size == 3){
                 // file lock in writing
                 writeTHelper(file_path, -1, splitted_command[2],temp_buffer);
+                int wr = snprintf(logg, BUFF_SIZE, ">> write end of file %s\n", temp_buffer);
+                writeToLog(logg);
+                memset(logg,0, wr);
                 memset(resp.command, 0, BUFF_SIZE);
                 strcpy(resp.command, temp_buffer);
                 write(clientWriteFd, &resp, sizeof(struct response));
@@ -474,6 +495,9 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
             if(size == 4){
                 int ln = atoi(splitted_command[2]);
                 writeTHelper(file_path, ln, splitted_command[3], temp_buffer);
+                int wr2 = snprintf(logg, BUFF_SIZE, ">> write %d line of file: %s, string: %s\n", ln, file_path, temp_buffer);
+                writeToLog(logg);
+                memset(logg,0, wr2);
                 memset(resp.command, 0, BUFF_SIZE);
                 strcpy(resp.command, temp_buffer);
                 write(clientWriteFd, &resp, sizeof(struct response));
@@ -507,19 +531,43 @@ void send_response(char (*splitted_command)[BUFF_SIZE],int clientWriteFd, enum c
         // break;
 
         case KILL:
-            kill(getpid(), SIGKILL);
+            memset(resp.command, 0, BUFF_SIZE);
+            logBytes = snprintf(logg, BUFF_SIZE, ">> killing server and all clients...\n");
+            logg[logBytes] = '\0';
+            writeToLog(logg);
+            write(STDOUT_FILENO, logg, logBytes);
+            // strcpy(resp.command, logg);
+            // write(clientWriteFd, &resp, sizeof(struct response));
+            memset(logg, 0, BUFF_SIZE);
+            unlink(SERVER_FIFO);
+            unlink(TEMP_DOWNLOAD_FIFO);
+            kill(clpid, SIGTERM);
+            kill(getppid(), SIGTERM);
+            exit(EXIT_SUCCESS);
         break;
 
-        case QUIT:
-            //write_to_log
-            if(find_process_and_kill(clpid) == 1)
-            {
-                clientCounter--;
-                kill(clpid, SIGTERM);
-                sem_post(queue);
-            }
+        // case QUIT:
+            
+        //     memset(temp_buffer, 0, BUFF_SIZE);
+        //     memset(file_path, 0, BUFF_SIZE);
+        //     memset(logg, 0, BUFF_SIZE);
+        //     logBytes = snprintf(logg, BUFF_SIZE, ">> Client pid %d is exiting...\n", clpid);
+        //     int numBytesWr = snprintf(temp_buffer, BUFF_SIZE, "Sending write request to server log file\nwaiting for log file\nlogfile write request granted\nbye..\n");
+        //     writeToLog(logg);
+        //     write(STDOUT_FILENO, logg, logBytes);
+        //     // temp_buffer[numBytesWr] = '\0';
+        //     memcpy(resp.command, temp_buffer, numBytesWr);
+        //     write(clientWriteFd, &resp, sizeof(struct response));
+        //     // if(find_process_and_kill(clpid) == 1)
+        //     // {
+        //         // clientCounter--;
+        //         // sem_post(queue);
+        //         // close(clientWriteFd);
+        //     kill(clpid, SIGKILL);
+        //     _exit(EXIT_SUCCESS);
+        //     // }
 
-        break;
+        // break;
 
         default:
         break;
@@ -630,19 +678,28 @@ int main(int argc, char **argv){
     char clientSem2[CLIENT_SEM_NAME_LEN];
     sem_t *sem_temp2;
     int fork_count=0;
-    struct sigaction new;
+    struct sigaction new,sa_chld;
     new.sa_handler = handler;
     sigemptyset(&new.sa_mask);
     new.sa_flags = 0;
     if(sigaction (SIGINT, &new, NULL) == -1){
         perror("sigaction");
         return ERR;
-    };
+    }
+    sa_chld.sa_handler = sigchldhndlr;
+    sigemptyset(&sa_chld.sa_mask);
+    sa_chld.sa_flags = SA_RESTART;;
+    if (sigaction(SIGCHLD, &sa_chld, NULL) == -1) {
+        perror("sigaction");
+        return ERR;
+    }
+    const char *logFile = "log.txt";
+    
+    int log_fd = open(logFile, O_CREAT | O_RDWR | O_TRUNC, 0666);
+    close(log_fd);
 
-
-    //log dosyasina bak hata oldugunda open hatasi aliyorsun
     if(argc != 3){
-        numBytesWrittenLog = sprintf(log, "Invalid size of argument(s) %d\nExample command : ./neHosServer Here #ofClients\nExiting...\n", argc);
+        numBytesWrittenLog = sprintf(log, ">> Invalid size of argument(s) %d\nExample command : ./neHosServer Here #ofClients\nExiting...\n", argc);
         if(writeToLog(log) == ERR){
             memset(log, 0, sizeof(numBytesWrittenLog));
             return ERR;
@@ -660,7 +717,7 @@ int main(int argc, char **argv){
     
     int numClients = atoi(argv[2]);
     if(numClients <= 0){
-        numBytesWrittenLog = sprintf(log, "#of Clients must be greater than 0! You entered : %d\nExiting...\n",numClients );
+        numBytesWrittenLog = sprintf(log, ">>#of Clients must be greater than 0! You entered : %d\nExiting...\n",numClients );
         if(writeToLog(log) == ERR){
             memset(log, 0, sizeof(numBytesWrittenLog));
             return ERR;
@@ -678,16 +735,17 @@ int main(int argc, char **argv){
     for(int i = 0; i < MAX_CLIENT; i++)
     {
         clients[i] = -1;
+        child[i] = -1;
     }
-    queue = sem_open(QUEUE_SEM, O_CREAT, 0666, numClients);
-    if (queue == SEM_FAILED) {
-        perror("sem_open producer");
-        exit(1);
-    }
+    // queue = sem_open(QUEUE_SEM, O_CREAT, 0666, numClients);
+    // if (queue == SEM_FAILED) {
+    //     perror("sem_open producer");
+    //     exit(1);
+    // }
     if(stat(argv[1], &st) == -1)
     {
         if(mkdir(argv[1], 0770) == -1){
-            numBytesWrittenLog = sprintf(log, "mkdir syscall error\n");
+            numBytesWrittenLog = sprintf(log, ">> mkdir syscall error\n");
             if(writeToLog(log) == ERR){
                 memset(log, 0, sizeof(numBytesWrittenLog));
                 return ERR;
@@ -707,12 +765,13 @@ int main(int argc, char **argv){
         if(errno == EEXIST){
             unlink(SERVER_FIFO);
         }
-        numBytesWrittenLog = sprintf(log, "mkfifo %s\n", SERVER_FIFO);
+        numBytesWrittenLog = sprintf(log, ">> mkfifo %s\n", SERVER_FIFO);
         if(write(STDOUT_FILENO, log, numBytesWrittenLog) == -1){
             perror("write syscall error\n");
             memset(log, 0, sizeof(numBytesWrittenLog));
             return ERR;
         }
+        writeToLog(log);
         memset(log, 0, sizeof(numBytesWrittenLog));
         // unlink(SERVER_FIFO);
         perror("mkfifo error");
@@ -724,16 +783,20 @@ int main(int argc, char **argv){
             unlink(SERVER_FIFO);
             unlink(TEMP_DOWNLOAD_FIFO);
         }
-        numBytesWrittenLog = sprintf(log, "mkfifo %s\n", SERVER_FIFO);
+        numBytesWrittenLog = sprintf(log, "mkfifo %s\n", TEMP_DOWNLOAD_FIFO);
         if(write(STDOUT_FILENO, log, numBytesWrittenLog) == -1){
             perror("write syscall error\n");
             memset(log, 0, sizeof(numBytesWrittenLog));
             return ERR;
         }
+        writeToLog(log);
         memset(log, 0, sizeof(numBytesWrittenLog));
         perror("mkfifo error");
         return ERR;
     }
+    numBytesWrittenLog = sprintf(log, ">> server fifo created : %s\n", SERVER_FIFO);
+    writeToLog(log);
+    memset(log, 0, sizeof(numBytesWrittenLog));
 
     pid = getpid(); // according to the man page: These functions are always successful.
 
@@ -745,6 +808,9 @@ int main(int argc, char **argv){
         }
         return ERR;
     }
+    writeToLog(log);
+    memset(log, 0, numBytesWrittenLog);
+
     serverFd = open(SERVER_FIFO, O_RDONLY);
     if(serverFd == -1)
     {
@@ -766,8 +832,13 @@ int main(int argc, char **argv){
         } 
         return ERR;
     }
+
     for(;;)
     {
+        numBytesWrittenLog = sprintf(log, ">> server fifo listening...\n");
+        writeToLog(log);
+        memset(log, 0, sizeof(numBytesWrittenLog));
+
         if(read(serverFd, &req, sizeof(struct request)) != sizeof(struct request)){
             perror("read \n");
             unlink(SERVER_FIFO);
@@ -777,166 +848,186 @@ int main(int argc, char **argv){
         {
             numBytesWrittenLog = snprintf(log, BUFF_SIZE, "Wrong server pid %ld\n", req.serverPid);
             write(STDOUT_FILENO, log, numBytesWrittenLog);
+            writeToLog(log);
             memset(log, 0, numBytesWrittenLog);
-            //return error to given client fifo
-        }
-        if(clientCounter > numClients && strcmp(req.connect,"tryConnect") == 0)
-        {
             kill(req.pid, SIGTERM);
         }
         else
         {
-            sem_wait(queue);
-            find_proper_location(req.pid);
-            // clients[clientCounter]= req.pid;
-            clientCounter++;
-            numBytesWrittenLog = snprintf(buffer,BUFF_SIZE,">>Client PID %ld connected as client%2d \n", req.pid,clientCounter);
-            write(STDOUT_FILENO, buffer, numBytesWrittenLog);
-            memset(buffer, 0, numBytesWrittenLog);
-
-            int forkPid = fork();
-            switch(forkPid)
+            if(clientCounter > numClients && strcmp(req.connect,"tryConnect") == 0)
             {
-                case 0:
-                    if(close(serverFd) == -1){
-                        perror("close");
-                        exit(EXIT_FAILURE);
-                    }
-                    if(close(dummyFd) == -1){
-                        perror("close");
-                        exit(EXIT_FAILURE);
-                    }
-                    char splitted_command[MAX_ARGUMENT][BUFF_SIZE];
-                    enum command_level lev;
-                    snprintf(clientSem, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)req.pid);
-                    sem_temp = sem_open(clientSem, 0);
-                    if(sem_temp == SEM_FAILED){
-                        perror("sem_open error\n");
-                    }
-                    snprintf(clientSem2, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)req.pid);
-                    sem_temp2 = sem_open(clientSem2,0);
+                numBytesWrittenLog = sprintf(log, ">> Queue is full...Terminating the client \n");
+                writeToLog(log);
+                write(STDOUT_FILENO, log, numBytesWrittenLog);
+                memset(log, 0, sizeof(numBytesWrittenLog));
+                kill(req.pid, SIGTERM);
+            }
+            else
+            {
+                find_proper_location(req.pid);
+                clientCounter++;
+                // sem_wait(queue);
+                // clients[clientCounter]= req.pid;
+                numBytesWrittenLog = snprintf(buffer,BUFF_SIZE,">>Client PID %ld connected as client%2d \n", req.pid,clientCounter);
+                writeToLog(buffer);
+                write(STDOUT_FILENO, buffer, numBytesWrittenLog);
+                memset(buffer, 0, numBytesWrittenLog);
 
-                    if(sem_temp2 == SEM_FAILED){
-                        perror("sem_open error\n");
-                    }
+                int forkPid = fork();
+                switch(forkPid)
+                {
+                    case 0:
+                        if(close(serverFd) == -1){
+                            perror("close");
+                            exit(EXIT_FAILURE);
+                        }
+                        if(close(dummyFd) == -1){
+                            perror("close");
+                            exit(EXIT_FAILURE);
+                        }
+                        char splitted_command[MAX_ARGUMENT][BUFF_SIZE];
+                        enum command_level lev;
+                        snprintf(clientSem, CLIENT_SEM_NAME_LEN, CLIENT_SEM_TEMP, (long)req.pid);
+                        sem_temp = sem_open(clientSem, 0);
+                        if(sem_temp == SEM_FAILED){
+                            perror("sem_open error\n");
+                        }
+                        snprintf(clientSem2, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)req.pid);
+                        sem_temp2 = sem_open(clientSem2,0);
 
-                    char logChild[BUFF_SIZE];
-                    int childBufferWritten = 0;
-                    snprintf(clientFifo, CLIENT_FIFO_NAME_LEN,CLIENT_FIFO,(long) req.pid);
+                        if(sem_temp2 == SEM_FAILED){
+                            perror("sem_open error\n");
+                        }
 
-                    // int numBytesWrittenLogChld = snprintf(logChild, BUFF_SIZE, "client fifo name is %s\n",clientFifo);
-                    // write(STDOUT_FILENO, logChild,numBytesWrittenLogChld);
-                    // memset(logChild, 0, numBytesWrittenLogChld);
+                        char logChild[BUFF_SIZE];
+                        int childBufferWritten = 0;
+                        snprintf(clientFifo, CLIENT_FIFO_NAME_LEN,CLIENT_FIFO,(long) req.pid);
 
-                    int clientReadFd = open(clientFifo, O_RDONLY);
-                    int clientWriteFd  = open(clientFifo, O_WRONLY);
-                    // char buffChld[BUFF_SIZE];
-                    // char doNotUse[MAX_ARGUMENT][BUFF_SIZE];
-                    // int numBytesWrittenLogChld = snprintf(buffChld,BUFF_SIZE,">>Clint fifo started\n");
-                    // write(STDOUT_FILENO, buffChld, numBytesWrittenLogChld);
-                    // memset(buffChld, 0, numBytesWrittenLogChld);
-                    for(;;)
-                    {
-                        memset(logChild, 0, BUFF_SIZE);
-                        sem_wait(sem_temp);
-                        // numBytesWrittenLogChld = snprintf(buffChld,BUFF_SIZE,">>Clint2 fifo started\n");
-                        // write(STDOUT_FILENO, buffChld, numBytesWrittenLogChld);
-                        // memset(buffChld, 0, numBytesWrittenLogChld);
-                        if(read(clientReadFd, &resp, sizeof(struct response)) != sizeof(struct response))
+                        // int numBytesWrittenLogChld = snprintf(logChild, BUFF_SIZE, "client fifo name is %s\n",clientFifo);
+                        // write(STDOUT_FILENO, logChild,numBytesWrittenLogChld);
+                        // memset(logChild, 0, numBytesWrittenLogChld);
+
+                        int clientReadFd = open(clientFifo, O_RDONLY);
+                        int clientWriteFd  = open(clientFifo, O_WRONLY);
+
+                        for(;;)
                         {
-                            perror("read");
-                            continue;
-                        }
+                            memset(logChild, 0, BUFF_SIZE);
+                            sem_wait(sem_temp);
 
-                        lev = handle_client_request(resp.command,splitted_command);
-                        if( lev == INVALID_COMMAND){
-                            childBufferWritten = snprintf(logChild, BUFF_SIZE, "Invalid command number entered : %s\n", resp.command);
-                            memset(resp.command,0, BUFF_SIZE);
-                            strcpy(resp.command, logChild);
-                            resp.command[childBufferWritten] = '\0';
-                            write(clientWriteFd, &resp, sizeof(struct response));
-                        }
-                        else{
-                            int sizeOfCommand = splitStringIntoArray_S(resp.command, ' ', splitted_command);
-                            send_response(splitted_command,clientWriteFd, lev, argv[1],sizeOfCommand,req.pid);
-                            //bir tane daha fork gerekebilir mi ?
-                        }
-
-                        if(strncmp(resp.command, "upload", 6) == 0){
-                            int lastpid = fork();
-                            if(lastpid == -1){
-                                perror("fork");
-                                exit(EXIT_FAILURE);
+                            if(read(clientReadFd, &resp, sizeof(struct response)) != sizeof(struct response))
+                            {
+                                perror("read");
+                                continue;
                             }
-                            else if(lastpid == 0){
+
+                            lev = handle_client_request(resp.command,splitted_command);
+                            if( lev == INVALID_COMMAND){
+                                childBufferWritten = snprintf(logChild, BUFF_SIZE, "Invalid command number entered : %s\n", resp.command);
+                                memset(resp.command,0, BUFF_SIZE);
+                                strcpy(resp.command, logChild);
+                                resp.command[childBufferWritten] = '\0';
+                                write(clientWriteFd, &resp, sizeof(struct response));
+                                // sem_post(sem_temp2);
+                            }
+                            else if(lev == QUIT){
+                                char loggg[BUFF_SIZE];
+
+                                int numBytesWr = snprintf(loggg, BUFF_SIZE, "Sending write request to server log file\nwaiting for log file\nlogfile write request granted\nbye..\n");
+                                writeToLog(loggg);
+                                loggg[numBytesWr] = '\0';
+                                strcpy(resp.command, loggg);
+                                write(clientWriteFd, &resp, sizeof(struct response));
+                                sem_post(sem_temp2);
+                                usleep(1000);
+                                clientCounter--;
+                                kill(req.pid, SIGTERM);
                                 close(clientWriteFd);
                                 close(clientReadFd);
-                                // sem_t *mutex, *full,*empty;
-                                strcpy(filen, argv[1]);
-                                strcat(filen, "/");
-                                strcat(filen, splitted_command[1]);
- 
-                                consumerrr(filen);
                                 exit(EXIT_SUCCESS);
                             }
-                        }
-                        else if(strncmp(resp.command, "download", 8) == 0)
-                        {
-                            int lastpid = fork();
-                            if(lastpid == -1){
-                                perror("fork");
-                                exit(EXIT_FAILURE);
+                            else{
+                                int sizeOfCommand = splitStringIntoArray_S(resp.command, ' ', splitted_command);
+                                send_response(splitted_command,clientWriteFd, lev, argv[1],sizeOfCommand,req.pid);
+                                // sem_post(sem_temp2);
+                                //bir tane daha fork gerekebilir mi ?
                             }
-                            else if(lastpid == 0){
-                                close(clientWriteFd);
-                                close(clientReadFd);
-                                strcpy(filen, argv[1]);
-                                strcat(filen, "/");
-                                strcat(filen, splitted_command[1]);
-                                printf("filen %s \n", filen);
-                                producerr(filen);
-                                exit(EXIT_SUCCESS);
-                            }
-                        }
-                        // strcpy(resp.command, logChild);
-                        // resp.command[childBufferWritten] = '\0';
-                        // memset(logChild, 0, BUFF_SIZE);
-                        // sem_wait(sem_temp2);
-                        // write(clientWriteFd, &resp, sizeof(struct response));
-                        sem_post(sem_temp2);
-                        for(int i = 0; i < MAX_ARGUMENT; i++){
-                            memset(splitted_command[i], 0, BUFF_SIZE);
-                        }
-                        wait(NULL);
 
-                    // }
-                        // if(close(clientReadFd) == -1){
+                            if(strncmp(resp.command, "upload", 6) == 0){
+                                int lastpid = fork();
+                                if(lastpid == -1){
+                                    perror("fork");
+                                    exit(EXIT_FAILURE);
+                                }
+                                else if(lastpid == 0){
+                                    close(clientWriteFd);
+                                    close(clientReadFd);
+                                    // sem_t *mutex, *full,*empty;
+                                    strcpy(filen, argv[1]);
+                                    strcat(filen, "/");
+                                    strcat(filen, splitted_command[1]);
+    
+                                    consumerrr(filen);
+                                    exit(EXIT_SUCCESS);
+                                }
+                            }
+                            else if(strncmp(resp.command, "download", 8) == 0)
+                            {
+                                int lastpid = fork();
+                                if(lastpid == -1){
+                                    perror("fork");
+                                    exit(EXIT_FAILURE);
+                                }
+                                else if(lastpid == 0){
+                                    close(clientWriteFd);
+                                    close(clientReadFd);
+                                    strcpy(filen, argv[1]);
+                                    strcat(filen, "/");
+                                    strcat(filen, splitted_command[1]);
+                                    producerr(filen);
+                                    exit(EXIT_SUCCESS);
+                                }
+                            }
+                            // strcpy(resp.command, logChild);
+                            // resp.command[childBufferWritten] = '\0';
+                            // memset(logChild, 0, BUFF_SIZE);
+                            // sem_wait(sem_temp2);
+                            // write(clientWriteFd, &resp, sizeof(struct response));
+                            sem_post(sem_temp2);
+                            for(int i = 0; i < MAX_ARGUMENT; i++){
+                                memset(splitted_command[i], 0, BUFF_SIZE);
+                            }
+
+                        // }
+                            // if(close(clientReadFd) == -1){
+                            //     perror("close");
+                            //     exit(EXIT_FAILURE);
+                            // }
+                        // if(close(clientWriteFd) == -1){
                         //     perror("close");
                         //     exit(EXIT_FAILURE);
-                        // }
-                    // if(close(clientWriteFd) == -1){
-                    //     perror("close");
-                    //     exit(EXIT_FAILURE);
-                    }
-                    // unlink(clientFifo);
-                    // exit(EXIT_SUCCESS);
+                        }
+                        // unlink(clientFifo);
+                        // exit(EXIT_SUCCESS);
 
-                break; 
+                    break; 
 
 
-                case -1:
-                    perror("fork");
-                    unlink(SERVER_FIFO);
-                    close(serverFd);
-                    close(dummyFd);
-                break;
+                    case -1:
+                        perror("fork");
+                        unlink(SERVER_FIFO);
+                        close(serverFd);
+                        close(dummyFd);
+                    break;
 
-                default: 
-                    child[fork_count++] = forkPid;
-                    // clients[clientCounter-1] = req.pid;
-                break;
+                    default: 
+                        child[fork_count++] = forkPid;
+                        // clients[clientCounter-1] = req.pid;
+                    break;
+                }
             }
         }
+
         // else{
             //return invalid pid
         // }

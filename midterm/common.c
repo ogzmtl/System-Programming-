@@ -11,6 +11,16 @@ int writeToLog(const char*log)
     unsigned const int log_length = strlen(log);
 
     log_fd = open(logFile, openFlags | O_APPEND, mode);
+    struct flock fl;
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_CUR;
+    fl.l_start = 0;
+    fl.l_len = 0;
+    if (fcntl(log_fd, F_SETLK, &fl) == -1)
+    {
+        fprintf(stderr, "File lock error\n");
+        return ERR;
+    }
     if(log_fd == -1){
         perror("open logfile");
         return ERR;
@@ -25,12 +35,17 @@ int writeToLog(const char*log)
         perror("log file write error");
         return ERR;
     }
+    fl.l_type = F_UNLCK;
+    if (fcntl(log_fd, F_SETLK, &fl) == -1)
+    {
+        fprintf(stderr, "File open lock error\n");
+        return -1;
+    }
     if(close(log_fd) == ERR)
     {
         perror("close log file error");
         return ERR;
     }
-
     return SUCCESS;
 }
 int splitStringIntoArray_S(const char* str, const char delim, char(*splitted)[BUFF_SIZE]){
@@ -154,12 +169,11 @@ void producer(const char *filename) {
     char buffer[BUFFER_SIZE];
     size_t bytes_read;
     while (1) {
-        printf("BITIRDIM3\n");
         bytes_read = fread(buffer, 1, BUFFER_SIZE, file);
 
         sem_wait(empty);
         sem_wait(mutex); // Wait until the consumer is ready
-        printf("BITIRDIM2\n");
+
         if(bytes_read < 1){
             *shm_ptr = '\0';
             sem_post(mutex);
@@ -174,10 +188,8 @@ void producer(const char *filename) {
         {
             break;
         }
-        printf("BITIRDIM1\n");
-
     }
-    printf("BITIRDIM5\n");
+
     fclose(file);
     // shm_ptr[0] = '\0';
     munmap(shm_ptr, BUFFER_SIZE);
@@ -189,106 +201,103 @@ void producer(const char *filename) {
     
     return; // Exit with status code 0 (success)
 }
-void producerr(const char *filename) {
+long int producerr(const char *filename) {
     int shm_fd;
     char *shm_ptr;
     sem_t *producer_sem, *consumer_sem;
-    printf("naber\n");
-    // Open or create the POSIX shared memory object
+
     shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    // Set the size of the shared memory object
     if (ftruncate(shm_fd, BUFFER_SIZE) == -1) {
         perror("ftruncate");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    // Map the shared memory object into the address space of the process
     shm_ptr = mmap(NULL, BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shm_ptr == MAP_FAILED) {
         perror("mmap");
-        return;
+        exit(EXIT_FAILURE);
     }
-
-    // Open or create the producer semaphore
+    memset(shm_ptr, 0, BUFFER_SIZE);
     producer_sem = sem_open(SEM_MUTEX_NAME, O_CREAT, 0666, 1);
     if (producer_sem == SEM_FAILED) {
         perror("sem_open producer");
-        return;
+        exit(EXIT_FAILURE);
     }
 
     // Open or create the consumer semaphore
     consumer_sem = sem_open(SEM_FULL_NAME, O_CREAT, 0666, 0);
     if (consumer_sem == SEM_FAILED) {
         perror("sem_open consumer");
-        return;
+        exit(EXIT_FAILURE);
     }
 
     // Open the input file for reading
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("fopen");
-        return;
+        exit(EXIT_FAILURE);
     }
-
-    // Read the content of the file and write it to shared memory
+    struct flock fl;
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_CUR;
+    fl.l_start = 0;
+    fl.l_len = 0;
     char buffer[BUFFER_SIZE];
     size_t bytes_read;
     // while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
         bytes_read = fread(buffer, 1, BUFFER_SIZE, file);
         sem_wait(producer_sem); // Wait until the consumer is ready
         memcpy(shm_ptr, buffer, bytes_read);
-        sem_post(consumer_sem); // Signal the consumer that data is available
+        sem_post(consumer_sem);
+        long int bytes = strlen(shm_ptr);
     // }
 // 
+    fl.l_type = F_UNLCK;
     fclose(file);
     munmap(shm_ptr, BUFFER_SIZE);
     close(shm_fd);
     sem_close(producer_sem);
     sem_close(consumer_sem);
-    return; // Exit with status code 0 (success)
+    return bytes; // Exit with status code 0 (success)
 }
-void consumerrr(const char *filename){
+long int consumerrr(const char *filename){
     int shm_fd;
     char *shm_ptr;
     sem_t *producer_sem, *consumer_sem;
     sleep(4);
-    // Open the POSIX shared memory object
+
     shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    // Map the shared memory object into the address space of the process
     shm_ptr = mmap(NULL, BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shm_ptr == MAP_FAILED) {
         perror("mmap");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    // Open the producer semaphore
     producer_sem = sem_open(SEM_MUTEX_NAME, 0);
     if (producer_sem == SEM_FAILED) {
         perror("sem_open producer");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    // Open the consumer semaphore
     consumer_sem = sem_open(SEM_FULL_NAME, 0);
     if (consumer_sem == SEM_FAILED) {
         perror("sem_open consumer");
     }
 
-    // Open the file for writing
     FILE *file = fopen(filename, "w");
     if (file == NULL) {
         perror("fopen");
-        return;
+        exit(EXIT_FAILURE);
     }
 
     // Consume the data from shared memory and write it to the file
@@ -298,19 +307,19 @@ void consumerrr(const char *filename){
         // if (strlen(shm_ptr) > 0) {
             fprintf(file, "%s", shm_ptr);
             fflush(file);
-            printf("Consumer received and wrote to file: %s\n", shm_ptr);
+            // printf("Consumer received and wrote to file: %s\n", shm_ptr);
         // } else {
             // done = 1; // No more data, exit loop
         // }
         sem_post(producer_sem); // Signal the producer that data has been consumed
     // }
-
+int bytes = strlen(shm_ptr);
     // Clean up
     fclose(file);
     munmap(shm_ptr, BUFFER_SIZE);
     close(shm_fd);
     sem_close(producer_sem);
-    return; // Exit with status code 0 (success)
+    return bytes; // Exit with status code 0 (success)
 }
 
 
@@ -363,7 +372,6 @@ void consumerr(const char *filename) {
     // Consume the data from shared memory and write it to the file
     int done = 0;
     while (!done) {
-        printf("BURDAYIM1\n");
         sem_wait(full);
         sem_wait(mutex); // Wait until the producer writes data
         if (strlen(shm_ptr) < 1) 
@@ -375,7 +383,7 @@ void consumerr(const char *filename) {
         // }
             fprintf(file, "%s", shm_ptr);
             fflush(file);
-            printf("Consumer received and wrote to file: %s\n", shm_ptr);
+            // printf("Consumer received and wrote to file: %s\n", shm_ptr);
             memset(shm_ptr, 0, BUFFER_SIZE);
         // } else {
         //     done = 1; // No more data, exit loop
@@ -386,7 +394,6 @@ void consumerr(const char *filename) {
         {
             break;
         }
-        printf("BURDAYIM2\n");
     }
 
     // Clean up

@@ -14,15 +14,15 @@ void handler(int sig)
     snprintf(semaphore_two, CLIENT_SEM_NAME_LEN, CLIENT_SEM2_TEMP, (long)getpid());
 
     
-    if(sig == SIGINT || sig == SIGTERM)
+    if(sig == SIGTERM)
     {
         unlink(clientFifo);
         sem_unlink(semaphore_one);
         sem_unlink(semaphore_two);
-
+        exit(EXIT_SUCCESS);
     }
-    printf("Handler %d you should use quit for proper termiantion\n");
-    // exit(EXIT_SUCCESS);
+    if(sig == SIGINT)
+        printf("Handler: you should use quit for proper termiantion\n");
 }
 int main(int argc, char **argv){
 
@@ -86,6 +86,9 @@ int main(int argc, char **argv){
         memset(log, 0, BUFF_SIZE);
         return ERR;
     }
+    numBytesWrittenLog = snprintf(log,BUFF_SIZE, ">> Server fifo opened in client %ld...\n", (long)getpid());
+    writeToLog(log);
+    memset(log, 0, BUFF_SIZE);
     clientPid = getpid(); // according to the man page: These functions are always successful.
     snprintf(clientFifo, CLIENT_FIFO_NAME_LEN, CLIENT_FIFO,(long) clientPid);
     if(mkfifo(clientFifo, 0666) == -1)
@@ -126,11 +129,11 @@ int main(int argc, char **argv){
         //semaphore close
         return ERR;
     }
-    sem_t* queue = sem_open(QUEUE_SEM, 0);
-    if (queue == SEM_FAILED) {
-        perror("sem_open producer");
-        exit(1);
-    }
+    // sem_t* queue = sem_open(QUEUE_SEM, 0);
+    // if (queue == SEM_FAILED) {
+    //     perror("sem_open producer");
+    //     exit(1);
+    // }
 
     if(close(serverFd) == -1){
         //write_to_log
@@ -140,7 +143,7 @@ int main(int argc, char **argv){
          //semaphore close
         return ERR;
     }
-    sem_wait(queue);
+    // sem_wait(queue);
     numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">> Waiting for Que.. Connection Established ");
     write(STDOUT_FILENO, buffer, numBytesReadStdin);
     memset(buffer, 0, BUFF_SIZE);
@@ -189,33 +192,32 @@ int main(int argc, char **argv){
             continue;
         }
         splitStringIntoArray_S(resp.command, ' ', splitted_command);
-        // memset(resp.command, 0, BUFF_SIZE);
-        // sem_wait(sem_temp);
-        // numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">>Enter command3 : ");
-        // write(STDOUT_FILENO, buffer, numBytesReadStdin);
-        // memset(buffer, 0, BUFF_SIZE);
         sem_post(sem_temp);
-        // numBytesReadStdin = snprintf(buffer, BUFF_SIZE, ">>Enter command4 : ");
-        // write(STDOUT_FILENO, buffer, numBytesReadStdin);
-        // memset(buffer, 0, BUFF_SIZE);
         sem_wait(sem_temp2);
-        // sem_post(sem_temp2);
+
         if (read(clientFdR, &resp, sizeof(struct response)) != sizeof(struct response)){
             perror("read");
-            //may be you can send invalid response signal to server
             continue;
         }
         resp.command[strlen(resp.command)] = '\0';
-
         fprintf(stdout, "%s\n", resp.command);
 
         if(strncmp(resp.command, "upload", 6) == 0 && strcmp(splitted_command[0], "help") != 0){
             
-            producerr(splitted_command[1]);
+            long int total = producerr(splitted_command[1]);
+            numBytesWrittenLog = snprintf(log, BUFF_SIZE, "file transfer request received. Beginning file transfer: %ld bytes transferred\n", total);
+            writeToLog(log);
+            write(STDOUT_FILENO, log, numBytesWrittenLog);
+            memset(log, 0, numBytesWrittenLog);
+            
         }
         else if(strncmp(resp.command, "download", 8)==0 && strcmp(splitted_command[0], "help") != 0)
         {
-            consumerrr(splitted_command[1]);
+            long int total_readed = consumerrr(splitted_command[1]);
+            numBytesWrittenLog = snprintf(log, BUFF_SIZE, "file transfer request send. Beginning file transfer: %ld bytes transferred\n", total_readed);
+            writeToLog(log);
+            write(STDOUT_FILENO, log, numBytesWrittenLog);
+            memset(log, 0, numBytesWrittenLog);
         }
 
     }

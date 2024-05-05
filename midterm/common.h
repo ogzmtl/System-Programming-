@@ -29,7 +29,7 @@
 #define SEM_EMPTY_NAME "/producer_semaphorex"
 #define SEM_MUTEX_NAME "/consumer_semaphorex"
 #define SEM_FULL_NAME "/full_semaphorex"
-#define BUFFER_SIZE 1024*1024*20
+#define BUFFER_SIZE 4096
 #define TEMP_DOWNLOAD_FIFO "/tmp/downfifo"
 #define QUEUE_SEM "/queue_sem"
 #define QUEUE_SEM_LEN (sizeof(CLIENT_SEM_TEMP) +1)
@@ -64,6 +64,6 @@ int splitStringIntoArray_S(const char* str, const char delim, char(*splitted)[BU
 off_t get_file_size(const char *file_path);
 void producer(const char *filename);
 void consumerr(const char *filename);
-void consumerrr(const char *filename);
-void producerr(const char *filename);
+long int consumerrr(const char *filename);
+long int producerr(const char *filename);
 #endif /* __OGUZ_COMMON_H__ */
