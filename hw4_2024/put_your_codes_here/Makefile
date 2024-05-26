@@ -4,8 +4,8 @@ OUT_PROJ = oguz_hw4
 
 all: $(OUT_PROJ)
 
-$(OUT_PROJ): 1801042624_main.o
-	gcc -o $@ $< 
+$(OUT_PROJ): 1801042624_main.o queue.o
+	gcc -o $@ $^
 
 %.o : %.c
 	gcc $(CC) $<

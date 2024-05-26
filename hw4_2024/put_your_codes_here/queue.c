@@ -19,7 +19,7 @@ void init(int len){
 
 int enqueue(Queue element)
 {
-    if(isFull()){
+    if(buffer_size_counter == size){
         return 0;
     }
     memset(buffer[last].src_filename, 0, MAX_FILENAME_LEN);
@@ -32,62 +32,33 @@ int enqueue(Queue element)
     buffer[last].dest_fd= element.dest_fd;
     buffer[last].empty = 0;
 
-    if(last == size-1) last = 0;
-    else last++;
+    last = (last +1) % size;
+    // if(last == size-1) last = 0;
+    // else last++;
 
-    printf("lasttt %d\n",last);
     return 1;
 }
 
-int isEmpty(int last)
+Queue dequeue()
 {
-    if(buffer[last].empty == 0){
-        return 0;
-    }
-    else{
-        return 1;
-    }
-}
-
-Queue* dequeue()
-{
+    // if(buffer_size_counter == 0){
+    //     return;
+    // }
     int temp = counter;
     // if(counter == last){
     //     return NULL;
     // }
-    if(counter == size-1){
-        counter = 0;
-    }
-    else counter++;
+    counter = (counter +1) % size;
+    // if(counter == size-1){
+    //     counter = 0;
+    // }
+    // else counter++;
 
-    buffer[temp].empty = 1;
-    return &buffer[temp];
+    // buffer[temp].empty = 1;
+    return buffer[temp];
 }
 
-int isFull(){
-    if(last < counter){
-        if(findAbsolute(counter - last) == 1) return 1;
-        else return 0;
-    }
-    else{
-        if(findAbsolute(counter - last) == size-1) return 1;
-        else return 0;
-    }
-
-}
 void destroy(){
     free(buffer);
-}
-
-int currentSize()
-{
-    if(counter < last)
-    {
-        return (last - counter) + 1;
-    }else{
-        if(findAbsolute(last - counter) == size-1) return 1;
-        if(findAbsolute(last - counter) == 1) return size; 
-
-        return size - counter + last;
-    }
+    buffer = NULL;
 }

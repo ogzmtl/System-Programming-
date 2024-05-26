@@ -15,15 +15,16 @@ extern Queue* buffer;
 extern int counter;
 extern int last;
 extern int size;
+extern int buffer_size_counter;
 
 void init(int size);
 int enqueue(Queue item);
-Queue* dequeue();
+Queue dequeue();
 int findAbsolute(int n);
-int isEmpty();
-int isFull();
+// int isEmpty();
+// int isFull();
 void destroy();
-int currentSize();
+// int currentSize();
 
 
 #endif
