@@ -23,21 +23,58 @@ typedef struct{
     int clientCapacity;
 }variables;
 
+typedef enum {
+    BURNED,
+    CANCELLED,
+    REQUESTED,
+    PREPARED, 
+    ON_DELIVERY,
+    DELIVERED
+}orderStatus;
+
 typedef struct{ 
-    int cityX;
-    int cityY;
+    int X;
+    int Y;
     int clientCapacity;
+    int sockfd;
+    int orderID;
+    int cookID;
+    int motoID;
+    orderStatus status;
 }sehirPopulasyon;
 
-void initializeVariables(variables* var, sehirPopulasyon c) {
-    for (int i = 0; i < c.clientCapacity; i++) {
-        var[i].home_locationX = rand() % c.cityX;
-        var[i].home_locationY = rand() % c.cityY;
+sehirPopulasyon cityInfo;
+
+int sockfd;
+void handler(int signum)
+{
+    int written = 0;
+    char log[LOG_BUFFER_LEN];
+
+    if (signum == SIGINT) {
+        sehirPopulasyon temp = {0,0,0,0,0,0,0,CANCELLED};
+
+        send(sockfd, &temp,sizeof(sehirPopulasyon) , 0);
+        close(sockfd);
+        written = snprintf(log, LOG_BUFFER_LEN, "^C signal .. cancelling orders.. editing log..\n");
+        write(STDOUT_FILENO, log, written);
+        memset(log, 0, written);
+        //writeTLog
+        exit(EXIT_SUCCESS);
+    }
+}
+void initializeVariables(variables* var) {
+    for (int i = 0; i < cityInfo.clientCapacity; i++) {
+        var[i].home_locationX = rand() % cityInfo.X;
+        var[i].home_locationY = rand() % cityInfo.Y;
+        printf("loc_x= %d\n", var[i].home_locationX);
     }
 }
 
 void sendVariables(int socket, variables* var, int count) {
     for (int i = 0; i < count; i++) {
+        printf("%d ", var[i].home_locationX);
+        printf("%d\n", var[i].home_locationY);
         if (send(socket, &var[i], sizeof(variables), 0) == -1) {
             perror("send");
             exit(EXIT_FAILURE);
@@ -54,7 +91,7 @@ int main(int argc, char **argv){
     int sizex, sizey;
     int numClients;
     int newSocket; 
-    char socketBuffer[1024];
+    char socketBuffer[256];
     srand(time(NULL));
 
     /*System Log Initialization Start*/
@@ -79,12 +116,20 @@ int main(int argc, char **argv){
     sizex = atoi(argv[3]);
     sizey = atoi(argv[4]);
     variables inputClient[numClients];
-    sehirPopulasyon cityInfo;
+    struct sigaction sa;
+    sa.sa_handler = handler;
+    sa.sa_flags = 0; // or SA_RESTART
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction");
+        exit(EXIT_FAILURE);
+    }
 
-    cityInfo.cityX = sizex;
-    cityInfo.cityY = sizey;
+    cityInfo.X = sizex;
+    cityInfo.Y = sizey;
     cityInfo.clientCapacity = numClients;
-    initializeVariables(inputClient, cityInfo);
+    cityInfo.status = REQUESTED;
+    initializeVariables(inputClient);
 
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT_NUM);
@@ -98,6 +143,7 @@ int main(int argc, char **argv){
 
     /* SOCKET OPERAIONS START*/
     socketfd = socket(AF_INET, SOCK_STREAM, 0);
+    sockfd = socketfd;
     if(socketfd == -1){
         perror("socket");
         exit(EXIT_FAILURE);
@@ -105,19 +151,64 @@ int main(int argc, char **argv){
 
     if(connect(socketfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
-        perror("bind failed\n");
+        perror("connect failed\n");
         exit(EXIT_FAILURE);
     }
-    // snprintf(socketBuffer, 1024, "%d %d", sizex, sizey);
-    // send(socketfd, socketBuffer, 1024, 0);
-    send(socketfd, &cityInfo, sizeof(cityInfo), 0);
-    sendVariables(socketfd, inputClient, numClients);
     numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, "> Connected to server...\n");
     write(STDOUT_FILENO, log, numBytesReadLog);
     memset(log, 0, numBytesReadLog);
+    // snprintf(socketBuffer, 1024, "%d %d", sizex, sizey);
+    // send(socketfd, socketBuffer, 1024, 0);
+    send(socketfd, &cityInfo, sizeof(sehirPopulasyon), 0);
+    sendVariables(socketfd, inputClient, numClients);
+
 
     /*SOCKET OPERATIONS END*/
+    while(1){
+        recv(socketfd, &cityInfo, sizeof(sehirPopulasyon),0);
+        
+        switch(cityInfo.status){
+            case BURNED: 
+                numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">Shop has been burned down, don't wait orders\n");
+                write(STDOUT_FILENO, log, numBytesReadLog);
+                memset(log, 0, LOG_BUFFER_LEN);
+                close(socketfd);
+                exit(EXIT_FAILURE);
+            break;
 
-    printf("Hello World\n");
+            case PREPARED:
+                numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">pide id :%d is prepared\n", cityInfo.orderID);
+                //log_file
+                write(STDOUT_FILENO, log, numBytesReadLog);
+                memset(log, 0, LOG_BUFFER_LEN);
+            break;
+
+            case ON_DELIVERY:
+                numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">pide id :%d on delivery (Moto id: %d)\n", cityInfo.orderID, cityInfo.motoID);
+                //log_file
+                write(STDOUT_FILENO, log, numBytesReadLog);
+                memset(log, 0, LOG_BUFFER_LEN);
+            break; 
+
+            case DELIVERED:
+                numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">All customers served \n>Log file written ..\n");
+                //log_file
+                write(STDOUT_FILENO, log, numBytesReadLog);
+                memset(log, 0, LOG_BUFFER_LEN);
+            break;
+
+            default: 
+                numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">Unknown Error occured\n");
+                //log_file
+                write(STDOUT_FILENO, log, numBytesReadLog);
+                memset(log, 0, LOG_BUFFER_LEN);
+            break;
+        }
+        // send(socketfd, &cityInfo, sizeof(sehirPopulasyon), 0);
+    }
+
+    close(socketfd);
+    
+    
     return 0;
 }

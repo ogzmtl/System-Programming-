@@ -35,7 +35,7 @@ void enqueue(Queue* queue, Pide item) {
 
 Pide dequeue(Queue* queue) {
     if (isEmpty(queue)) {
-        Pide empty = {0, 0.0, 0.0, 0};
+        Pide empty = {0, 0, 0, 0};
         return empty;
     }
     Pide item = queue->data[queue->front];
@@ -46,7 +46,7 @@ Pide dequeue(Queue* queue) {
 
 Pide front(Queue* queue) {
     if (isEmpty(queue)) {
-        Pide empty = {0, 0.0, 0.0, 0};
+        Pide empty = {0, 0, 0, 0};
         return empty;
     }
     return queue->data[queue->front];
@@ -54,7 +54,7 @@ Pide front(Queue* queue) {
 
 Pide rear(Queue* queue) {
     if (isEmpty(queue)) {
-        Pide empty = {0, 0.0, 0.0, 0};
+        Pide empty = {0, 0, 0, 0};
         return empty;
     }
     return queue->data[queue->rear];

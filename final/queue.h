@@ -7,7 +7,7 @@
 
 typedef struct pide {
     int id;
-    float loc_x, loc_y;
+    int loc_x, loc_y;
     long int mod_time;
     // int cookid;
 } Pide;
