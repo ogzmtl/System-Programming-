@@ -1,58 +1,16 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <pthread.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <time.h>
+#include "final_common.h"
 
-#define PORT_NUM 8080
-#define LOG_BUFFER_LEN 256
-
-typedef struct{ 
-    int home_locationX;
-    int home_locationY;
-    int cityX;
-    int cityY;
-    int clientCapacity;
-}variables;
-
-typedef enum {
-    BURNED,
-    CANCELLED,
-    REQUESTED,
-    PREPARED, 
-    ON_DELIVERY,
-    DELIVERED
-}orderStatus;
-
-typedef struct{ 
-    int X;
-    int Y;
-    int clientCapacity;
-    int sockfd;
-    int orderID;
-    int cookID;
-    int motoID;
-    orderStatus status;
-}sehirPopulasyon;
 
 sehirPopulasyon cityInfo;
-
 int sockfd;
+
 void handler(int signum)
 {
     int written = 0;
     char log[LOG_BUFFER_LEN];
 
     if (signum == SIGINT) {
-        sehirPopulasyon temp = {0,0,0,0,0,0,0,CANCELLED};
+        sehirPopulasyon temp = {0,0,0,0,0,0,0,0,CANCELLED};
 
         send(sockfd, &temp,sizeof(sehirPopulasyon) , 0);
         close(sockfd);
@@ -67,14 +25,14 @@ void initializeVariables(variables* var) {
     for (int i = 0; i < cityInfo.clientCapacity; i++) {
         var[i].home_locationX = rand() % cityInfo.X;
         var[i].home_locationY = rand() % cityInfo.Y;
-        printf("loc_x= %d\n", var[i].home_locationX);
+        // printf("loc_x= %d\n", var[i].home_locationX);
     }
 }
 
 void sendVariables(int socket, variables* var, int count) {
     for (int i = 0; i < count; i++) {
-        printf("%d ", var[i].home_locationX);
-        printf("%d\n", var[i].home_locationY);
+        // printf("%d ", var[i].home_locationX);
+        // printf("%d\n", var[i].home_locationY);
         if (send(socket, &var[i], sizeof(variables), 0) == -1) {
             perror("send");
             exit(EXIT_FAILURE);
@@ -85,36 +43,39 @@ void sendVariables(int socket, variables* var, int count) {
 int main(int argc, char **argv){
 
     int socketfd;
-    struct sockaddr_in addr; //Structures for handling internet addresses (netinet/in.h)
-    socklen_t addrLen = sizeof(addr);
-    int ipAddr;
+    struct sockaddr_in addr;
+    // socklen_t addrLen = sizeof(addr);
+    // int ipAddr;
     int sizex, sizey;
     int numClients;
-    int newSocket; 
-    char socketBuffer[256];
+    // int newSocket; 
+    // char socketBuffer[256];
     srand(time(NULL));
 
     /*System Log Initialization Start*/
-    char log[LOG_BUFFER_LEN]; //Use STDOUT and file buffer as same
+    char log[LOG_BUFFER_LEN];
     int numBytesReadLog = 0;
     /*System Log Initializtion End*/
+    const char *logFile = "log.txt";
+    
+    int log_fd = open(logFile, O_CREAT | O_RDWR | O_APPEND, 0666);
+    close(log_fd);
 
     /* USAGE_ERR_START*/
-    if(argc != 5){
-        numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, "Usage %s: [portnumber] [numberOfClients] [p] [q]\n", argv[0]);
+    if(argc != 6){
+        numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, "Usage %s: [portnumber] [ipAddress] [numberOfClients] [p] [q]\n", argv[0]);
         write(STDOUT_FILENO, log, numBytesReadLog);
         memset(log, 0, numBytesReadLog);
         exit(EXIT_FAILURE);
     }
     /*USAGE_ERR_END */
 
-
-
     /*INPUT PREPARATION START*/
-    ipAddr = atoi(argv[1]);
-    numClients = atoi(argv[2]);
-    sizex = atoi(argv[3]);
-    sizey = atoi(argv[4]);
+    int flag = 0;
+    int portNum = atoi(argv[1]);
+    numClients = atoi(argv[3]);
+    sizex = atoi(argv[4]);
+    sizey = atoi(argv[5]);
     variables inputClient[numClients];
     struct sigaction sa;
     sa.sa_handler = handler;
@@ -125,15 +86,21 @@ int main(int argc, char **argv){
         exit(EXIT_FAILURE);
     }
 
+    long int pidClient = getpid();
+    numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">> PID %ld\n", pidClient);
+    write(STDOUT_FILENO, log, numBytesReadLog);
+    memset(log, 0, numBytesReadLog);
+
     cityInfo.X = sizex;
     cityInfo.Y = sizey;
     cityInfo.clientCapacity = numClients;
     cityInfo.status = REQUESTED;
+    cityInfo.pid = pidClient;
     initializeVariables(inputClient);
 
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(PORT_NUM);
-    if(inet_pton(AF_INET, argv[1], &addr.sin_addr) <= 0){
+    addr.sin_port = htons(portNum);
+    if(inet_pton(AF_INET, argv[2], &addr.sin_addr) <= 0){
         numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, "Invalid Address or not supported\n");
         write(STDOUT_FILENO, log, numBytesReadLog);
         memset(log, 0, numBytesReadLog);
@@ -154,11 +121,12 @@ int main(int argc, char **argv){
         perror("connect failed\n");
         exit(EXIT_FAILURE);
     }
-    numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, "> Connected to server...\n");
+
+
+    numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">> Connected to server...\n");
     write(STDOUT_FILENO, log, numBytesReadLog);
     memset(log, 0, numBytesReadLog);
-    // snprintf(socketBuffer, 1024, "%d %d", sizex, sizey);
-    // send(socketfd, socketBuffer, 1024, 0);
+
     send(socketfd, &cityInfo, sizeof(sehirPopulasyon), 0);
     sendVariables(socketfd, inputClient, numClients);
 
@@ -170,7 +138,12 @@ int main(int argc, char **argv){
         switch(cityInfo.status){
             case BURNED: 
                 numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">Shop has been burned down, don't wait orders\n");
+                send(socketfd, &cityInfo, sizeof(sehirPopulasyon), 0);
                 write(STDOUT_FILENO, log, numBytesReadLog);
+                memset(log, 0, LOG_BUFFER_LEN);
+                
+                numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, "(client) Shop has been burned down, don't wait orders\n");
+                writeToLog(log);
                 memset(log, 0, LOG_BUFFER_LEN);
                 close(socketfd);
                 exit(EXIT_FAILURE);
@@ -193,7 +166,12 @@ int main(int argc, char **argv){
             case DELIVERED:
                 numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, ">All customers served \n>Log file written ..\n");
                 //log_file
+                flag = 1;
                 write(STDOUT_FILENO, log, numBytesReadLog);
+                memset(log, 0, LOG_BUFFER_LEN);
+
+                numBytesReadLog = snprintf(log, LOG_BUFFER_LEN, "(client) All customers served \n>Log file written ..\n");
+                // writeToLog(log);
                 memset(log, 0, LOG_BUFFER_LEN);
             break;
 
@@ -204,11 +182,13 @@ int main(int argc, char **argv){
                 memset(log, 0, LOG_BUFFER_LEN);
             break;
         }
-        // send(socketfd, &cityInfo, sizeof(sehirPopulasyon), 0);
+        if(flag == 1){
+            cityInfo.status = DELIVERED;
+            send(socketfd, &cityInfo, sizeof(sehirPopulasyon), 0);
+            break;
+        }
     }
 
-    close(socketfd);
-    
-    
+    close(socketfd);    
     return 0;
 }

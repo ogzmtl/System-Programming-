@@ -1,6 +1,9 @@
 {
     "files.associations": {
         "string.h": "c",
-        "iterator": "c"
-    }
+        "iterator": "c",
+        "stdio.h": "c",
+        "final_common.h": "c"
+    },
+    "git.ignoreLimitWarning": true
 }
